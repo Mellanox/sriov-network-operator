@@ -3,6 +3,7 @@ package sriov
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -151,6 +152,7 @@ func (s *sriov) getVfInfo(vfAddr string, pfName string, eswitchMode string, devi
 			vf.Mac = link.Attrs().HardwareAddr.String()
 		}
 	}
+	vf.GUID = s.networkHelper.GetNetDevNodeGUID(pciAddr)
 
 	for _, device := range devices {
 		if vfAddr == device.Address {
@@ -276,15 +278,16 @@ func (s *sriov) DiscoverSriovDevices(storeManager store.ManagerInterface) ([]sri
 		}
 
 		iface := sriovnetworkv1.InterfaceExt{
-			Name:       pfNetName,
-			PciAddress: device.Address,
-			Driver:     driver,
-			Vendor:     device.Vendor.ID,
-			DeviceID:   device.Product.ID,
-			Mtu:        link.Attrs().MTU,
-			Mac:        link.Attrs().HardwareAddr.String(),
-			LinkType:   s.encapTypeToLinkType(link.Attrs().EncapType),
-			LinkSpeed:  s.networkHelper.GetNetDevLinkSpeed(pfNetName),
+			Name:           pfNetName,
+			PciAddress:     device.Address,
+			Driver:         driver,
+			Vendor:         device.Vendor.ID,
+			DeviceID:       device.Product.ID,
+			Mtu:            link.Attrs().MTU,
+			Mac:            link.Attrs().HardwareAddr.String(),
+			LinkType:       s.encapTypeToLinkType(link.Attrs().EncapType),
+			LinkSpeed:      s.networkHelper.GetNetDevLinkSpeed(pfNetName),
+			LinkAdminState: s.networkHelper.GetNetDevLinkAdminState(pfNetName),
 		}
 
 		pfStatus, exist, err := storeManager.LoadPfsStatus(iface.PciAddress)
@@ -588,7 +591,7 @@ func (s *sriov) configSriovDevice(iface *sriovnetworkv1.Interface, skipVFConfigu
 	if err != nil {
 		return err
 	}
-	if pfLink.Attrs().OperState != netlink.OperUp {
+	if pfLink.Attrs().Flags&net.FlagUp == 0 {
 		err = s.netlinkLib.LinkSetUp(pfLink)
 		if err != nil {
 			return err
