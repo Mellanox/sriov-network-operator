@@ -1,4 +1,4 @@
-name: Sync Fork
+name: Fork Sync
 
 on:
   schedule:
@@ -33,7 +33,7 @@ jobs:
         head: master                 # upstream
         base: ${{ matrix.branch }}   # downstream
         pr_title: 'task: Sync ${{ matrix.branch }} from upstream'
-        pr_message: 'Created by [${{ github.repository }} CI](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) (*${{ github.job }}* job).'
+        pr_message: 'Created by [*${{ github.job }}* workflow job](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) to sync changes from [upstream](${{ github.server_url }}/k8snetworkplumbingwg/${{ github.event.repository.name }}) to [downstream](${{ github.server_url }}/${{ github.repository }}).'
         retries: 2
         retry_after: 10
         ignore_fail: true
