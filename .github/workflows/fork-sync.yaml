@@ -1,0 +1,42 @@
+name: Fork Sync
+
+on:
+  schedule:
+  - cron: '0 0 * * *'  # nightly
+  workflow_dispatch:   # enable manual trigger
+
+jobs:
+  lookup-most-recent-release-branch:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Lookup most recent release branch
+      id: lookup-most-recent-release-branch
+      run: |
+        git fetch --all
+        echo most_recent_release_branch=$(git branch --remotes --sort refname | grep network-operator- | tail -n 1 | cut -d '/' -f 2-) >> $GITHUB_OUTPUT
+    outputs:
+      most_recent_release_branch: ${{ steps.lookup-most-recent-release-branch.outputs.most_recent_release_branch }}
+
+  sync-fork:
+    runs-on: ubuntu-latest
+    needs: lookup-most-recent-release-branch
+    strategy:
+      fail-fast: false
+      matrix:
+        branch:
+        - master
+        - ${{ needs.lookup-most-recent-release-branch.outputs.most_recent_release_branch }}
+    steps:
+    - uses: tgymnich/fork-sync@v1.3  # input `auto_approve` is broken in versions above 1.3 (https://github.com/tgymnich/fork-sync/issues/153#issuecomment-1868494745) and at least until 2.0.10
+      if: ${{ matrix.branch != '' }}
+      with:
+        owner: k8snetworkplumbingwg  # upstream
+        head: master                 # upstream
+        base: ${{ matrix.branch }}   # downstream
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        pr_title: 'sync: from upstream master to ${{ matrix.branch }}'
+        pr_message: 'Created by [*${{ github.job }}* workflow job](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) to sync changes from [upstream](${{ github.server_url }}/k8snetworkplumbingwg/${{ github.event.repository.name }}) to [downstream](${{ github.server_url }}/${{ github.repository }}).'
+        personal_token: ${{ secrets.GH_TOKEN_NVIDIA_CI_CD }}
+        merge_method: rebase
+        auto_approve: true
