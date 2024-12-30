@@ -92,6 +92,7 @@ func RenderDir(manifestDir string, d *RenderData) ([]*unstructured.Unstructured,
 	return out, nil
 }
 
+// RenderTemplate renders provided template to string
 func RenderTemplate(template string, d *RenderData) (*bytes.Buffer, error) {
 	return renderTemplate(template, d)
 }
