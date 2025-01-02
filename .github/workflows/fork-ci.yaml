@@ -47,13 +47,13 @@ jobs:
       matrix:
         include:
           - component: operator
-            image_name: ${{ github.event.repository.name }}
+            image_name: mellanox
             dockerfile: Dockerfile
           - component: config-daemon
-            image_name: ${{ github.event.repository.name }}-config-daemon
+            image_name: mellanox-config-daemon
             dockerfile: Dockerfile.sriov-network-config-daemon
           - component: webhook
-            image_name: ${{ github.event.repository.name }}-webhook
+            image_name: mellanox-webhook
             dockerfile: Dockerfile.webhook
     steps:
       - uses: actions/checkout@v4
