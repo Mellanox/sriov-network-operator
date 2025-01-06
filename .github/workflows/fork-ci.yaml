@@ -102,10 +102,18 @@ jobs:
 
           git checkout -b feature/update-sriov-tags-to-$DOCKER_TAG
 
-          cp -r ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/* deployment/network-operator/charts/sriov-network-operator/
+          # NOTE: ignore Chart.yaml changes because we refer to chart name in values.yaml and have hardcoded version.
+          cp -r ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/crds/ deployment/network-operator/charts/sriov-network-operator/
+          cp -r ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/templates/ deployment/network-operator/charts/sriov-network-operator/
+          cp  ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/README.md deployment/network-operator/charts/sriov-network-operator/
+          cp  ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/values.yaml.md deployment/network-operator/charts/sriov-network-operator/
 
           yq -i e '.SriovNetworkOperator.repository |= "${{ env.DOCKER_REGISTRY }}"' hack/release.yaml
           yq -i e '.SriovNetworkOperator.version |= "${{ env.DOCKER_TAG }}"' hack/release.yaml
+          yq -i e '.SriovConfigDaemon.repository |= "${{ env.DOCKER_REGISTRY }}"' hack/release.yaml
+          yq -i e '.SriovConfigDaemon.version |= "${{ env.DOCKER_TAG }}"' hack/release.yaml
+          yq -i e '.SriovNetworkOperatorWebhook.repository |= "${{ env.DOCKER_REGISTRY }}"' hack/release.yaml
+          yq -i e '.SriovNetworkOperatorWebhook.version |= "${{ env.DOCKER_TAG }}"' hack/release.yaml
           make release-build
 
           if ! git diff --color --unified=0 --exit-code; then
@@ -116,6 +124,6 @@ jobs:
               --repo ${{ github.repository_owner }}/network-operator \
               --base $BASE_BRANCH \
               --head $(git branch --show-current) \
-              --fill \
-              --body "Created by the *${{ github.job }}* job in [${{ github.repository }} CI](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+              --title "task: update SR-IOV images tags to $DOCKER_TAG in chart values" \
+              --body "Created by the *${{ github.job }}* job."
           fi
