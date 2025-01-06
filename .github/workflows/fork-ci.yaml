@@ -84,26 +84,32 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          path: sriov-network-operator-fork
+      - uses: actions/checkout@v4
+        with:
           token: ${{ secrets.GH_TOKEN_NVIDIA_CI_CD }}
           repository: ${{ github.repository_owner }}/network-operator
+          path: network-opertor-fork
       - name: Determine base branch
         run: |
           echo "BASE_BRANCH=${{ contains(env.DOCKER_TAG, 'beta') && 'master' || env.DOCKER_TAG }}" >> $GITHUB_ENV
       - name: Create PR to update image tags in network-operator values
         run: |
-          
+          cd network-opertor-fork
+
           git config user.name  nvidia-ci-cd
           git config user.email svc-cloud-orch-gh@nvidia.com
-          
+
           git checkout -b feature/update-sriov-tags-to-$DOCKER_TAG
-          
-          cp -r ../sriov-network-operator/deployment/sriov-network-operator-chart/* deployment/network-operator/charts/sriov-network-operator/
-          
+
+          cp -r ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/* deployment/network-operator/charts/sriov-network-operator/
+
           yq -i e '.SriovNetworkOperator.repository |= "${{ env.DOCKER_REGISTRY }}"' hack/release.yaml
           yq -i e '.SriovNetworkOperator.version |= "${{ env.DOCKER_TAG }}"' hack/release.yaml
           make release-build
 
           if ! git diff --color --unified=0 --exit-code; then
+            git add deployment/network-operator/charts/sriov-network-operator
             git commit -sam "task: update SR-IOV images tags to $DOCKER_TAG in chart values"
             git push -u origin feature/update-sriov-tags-to-$DOCKER_TAG
             gh pr create \
