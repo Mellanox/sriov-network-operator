@@ -47,13 +47,13 @@ jobs:
       matrix:
         include:
           - component: operator
-            image_name: mellanox
+            image_name: sriov-network-operator
             dockerfile: Dockerfile
           - component: config-daemon
-            image_name: mellanox-config-daemon
+            image_name: sriov-network-operator-config-daemon
             dockerfile: Dockerfile.sriov-network-config-daemon
           - component: webhook
-            image_name: mellanox-webhook
+            image_name: sriov-network-operator-webhook
             dockerfile: Dockerfile.webhook
     steps:
       - uses: actions/checkout@v4
