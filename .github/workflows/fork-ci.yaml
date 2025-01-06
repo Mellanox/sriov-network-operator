@@ -106,7 +106,7 @@ jobs:
           cp -r ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/crds/ deployment/network-operator/charts/sriov-network-operator/
           cp -r ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/templates/ deployment/network-operator/charts/sriov-network-operator/
           cp  ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/README.md deployment/network-operator/charts/sriov-network-operator/
-          cp  ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/values.yaml.md deployment/network-operator/charts/sriov-network-operator/
+          cp  ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/values.yaml deployment/network-operator/charts/sriov-network-operator/
 
           yq -i e '.SriovNetworkOperator.repository |= "${{ env.DOCKER_REGISTRY }}"' hack/release.yaml
           yq -i e '.SriovNetworkOperator.version |= "${{ env.DOCKER_TAG }}"' hack/release.yaml
