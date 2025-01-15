@@ -123,12 +123,12 @@ jobs:
 
           if ! git diff --color --unified=0 --exit-code; then
             git add deployment/network-operator/charts/sriov-network-operator
-            git commit -sam "task: update SR-IOV images tags to $DOCKER_TAG in chart values"
+            git commit -sam "cicd: update SR-IOV images tags to $DOCKER_TAG in chart values"
             git push -u origin feature/update-sriov-tags-to-$DOCKER_TAG
             gh pr create \
               --repo ${{ github.repository_owner }}/network-operator \
               --base $BASE_BRANCH \
               --head $(git branch --show-current) \
-              --title "task: update SR-IOV images tags to $DOCKER_TAG in chart values" \
+              --title "cicd: update SR-IOV images tags to $DOCKER_TAG in chart values" \
               --body "Created by the *${{ github.job }}* job."
           fi
