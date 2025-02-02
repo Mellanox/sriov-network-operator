@@ -107,11 +107,10 @@ jobs:
 
           git checkout -b feature/update-sriov-tags-to-$DOCKER_TAG
 
+          rm -rf deployment/network-operator/charts/sriov-network-operator/*
+          cp -r ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/* deployment/network-operator/charts/sriov-network-operator/
           # we *don't* copy `Chart.yaml` with the files below, because network-operator's `Chart.yaml` refers to the SR-IOV chart name with a hardcoded version.
-          cp -r ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/crds/       deployment/network-operator/charts/sriov-network-operator/
-          cp -r ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/templates/  deployment/network-operator/charts/sriov-network-operator/
-          cp    ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/README.md   deployment/network-operator/charts/sriov-network-operator/
-          cp    ../sriov-network-operator-fork/deployment/sriov-network-operator-chart/values.yaml deployment/network-operator/charts/sriov-network-operator/
+          git checkout -- deployment/network-operator/charts/sriov-network-operator/Chart.yaml
 
           yq -i '.SriovNetworkOperator.repository = "${{ env.DOCKER_REGISTRY }}"'        hack/release.yaml
           yq -i '.SriovNetworkOperator.version = "${{ env.DOCKER_TAG }}"'                hack/release.yaml
@@ -125,7 +124,7 @@ jobs:
             git add deployment/network-operator/charts/sriov-network-operator
             git add -u
             git commit -sam "cicd: update SR-IOV images tags to $DOCKER_TAG in chart values"
-            git push -u origin feature/update-sriov-tags-to-$DOCKER_TAG
+            git push -f -u origin feature/update-sriov-tags-to-$DOCKER_TAG
             gh pr create \
               --repo ${{ github.repository_owner }}/network-operator \
               --base $BASE_BRANCH \
