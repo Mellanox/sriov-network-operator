@@ -123,6 +123,7 @@ jobs:
 
           if ! git diff --color --unified=0 --exit-code; then
             git add deployment/network-operator/charts/sriov-network-operator
+            git add -u
             git commit -sam "cicd: update SR-IOV images tags to $DOCKER_TAG in chart values"
             git push -u origin feature/update-sriov-tags-to-$DOCKER_TAG
             gh pr create \
