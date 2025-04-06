@@ -8,7 +8,7 @@ on:
       - network-operator-*
 
 jobs:
-  determine_docker_registry_and_tag:
+  determine-docker-registry-and-tag:
     runs-on: ubuntu-latest
     env:
       REGISTRY_INTERNAL: nvcr.io/nvstaging/mellanox
@@ -36,13 +36,13 @@ jobs:
       docker_registry: ${{ steps.store-docker-registry-and-tag.outputs.DOCKER_REGISTRY }}
       docker_tag: ${{ steps.store-docker-registry-and-tag.outputs.DOCKER_TAG }}
 
-  build_and_push_images:
-    needs: determine_docker_registry_and_tag
+  build-and-push-images:
+    needs: determine-docker-registry-and-tag
     runs-on: ubuntu-latest
     env:
       BUILD_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le
-      DOCKER_REGISTRY: ${{ needs.determine_docker_registry_and_tag.outputs.docker_registry }}
-      DOCKER_TAG: ${{ needs.determine_docker_registry_and_tag.outputs.docker_tag }}
+      DOCKER_REGISTRY: ${{ needs.determine-docker-registry-and-tag.outputs.docker_registry }}
+      DOCKER_TAG: ${{ needs.determine-docker-registry-and-tag.outputs.docker_tag }}
     strategy:
       matrix:
         include:
@@ -72,14 +72,14 @@ jobs:
           tags: ${{ env.DOCKER_REGISTRY }}/${{ matrix.image_name }}:${{ env.DOCKER_TAG }}
           push: true
 
-  update_network_operator_values:
+  update-network-operator-values:
     needs:
-      - determine_docker_registry_and_tag
-      - build_and_push_images
+      - determine-docker-registry-and-tag
+      - build-and-push-images
     runs-on: ubuntu-latest
     env:
-      DOCKER_REGISTRY: ${{ needs.determine_docker_registry_and_tag.outputs.docker_registry }}
-      DOCKER_TAG: ${{ needs.determine_docker_registry_and_tag.outputs.docker_tag }}
+      DOCKER_REGISTRY: ${{ needs.determine-docker-registry-and-tag.outputs.docker_registry }}
+      DOCKER_TAG: ${{ needs.determine-docker-registry-and-tag.outputs.docker_tag }}
       GH_TOKEN: ${{ secrets.GH_TOKEN_NVIDIA_CI_CD }}
     steps:
       - uses: actions/checkout@v4
@@ -132,4 +132,5 @@ jobs:
               --head $(git branch --show-current) \
               --title "cicd: update SR-IOV images tags to $DOCKER_TAG in chart values" \
               --body "Created by the *${{ github.job }}* job."
+              --body "Created by the [*${{ github.job }}* job](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           fi
