@@ -18,27 +18,63 @@ IS_OS_UBUNTU=true; [[ "$(chroot "$chroot_path" grep -i ubuntu /etc/os-release -c
 
 if ${IS_OS_UBUNTU} ; then
     grub_config="/etc/default/grub"
-    grub_cmdline=$(grep GRUB_CMDLINE_LINUX_DEFAULT grub)
-    grub_cmdline=${grub_cmdline//"GRUB_CMDLINE_LINUX_DEFAULT="/}
-    grub_cmdline="${grub_cmdline//\"}"
+    # Operate on the copy of the file
+    cp ${chroot_path}/${grub_config} /tmp/grub
 
     for t in "${kargs[@]}";do
         if [[ $command == "add" ]];then
-          if [[ $args != *${t}* ]];then
-              grub_cmdline="$grub_cmdline $t"
-              let ret++
-          fi
-        fi
-        if [[ $command == "remove" ]];then
-          if [[ $grub_cmdline == *${t}* ]];then
-                grub_cmdline=$(echo $grub_cmdline  | sed "s/\b$t\b//g" | sed 's/  */ /g')
+            # Modify only GRUB_CMDLINE_LINUX_DEFAULT line if it's not already present
+            line=$(grep -P "^\s*GRUB_CMDLINE_LINUX_DEFAULT" /tmp/grub)
+            if [ $? -ne 0 ];then
+                exit 1
+            fi
+
+            IFS='"' read g param q <<< "$line"
+            arr=($param)
+            found=false
+
+            for item in "${arr[@]}"; do
+                if [[ "$item" == "${t}" ]]; then
+                    found=true
+                    break
+                fi
+            done
+
+            if [ $found == false ];then
+                # Append to the end of the line
+                new_param="${arr[@]} ${t}"
+                sed -i "s/\(^\s*$g\"\)\(.*\)\"/\1${new_param}\"/" /tmp/grub
                 let ret++
-           fi
+            fi
+        fi
+
+        if [[ $command == "remove" ]];then
+            # Remove from everywhere, except commented lines
+            ret=$((ret + $(grep -E '^[[:space:]]*GRUB_CMDLINE_LINUX(_DEFAULT)?[[:space:]]*=.*(^|[[:space:]]|")'"$t"'([[:space:]]|"|$)' /tmp/grub | wc -l)))
+            if [ $ret -gt 0 ];then
+                while read line;do
+                    if [[ "$line" =~ GRUB_CMDLINE_LINUX ]];then
+                        IFS='"' read g param q <<< "$line"
+                        arr=($param)
+                        new_param=""
+
+                        for item in "${arr[@]}"; do
+                            if [[ "$item" != "${t}" ]]; then
+                                new_param="${new_param} ${item}"
+                            fi
+                        done
+                        sed -i "s/\(^\s*$g\"\)\(.*\)\"/\1${new_param}\"/" /tmp/grub
+                    fi
+                done < /tmp/grub
+            fi
         fi
     done
 
-    chroot "$chroot_path" sed -i "/GRUB_CMDLINE_LINUX_DEFAULT=.*/c\GRUB_CMDLINE_LINUX_DEFAULT=\"$grub_cmdline\"" $grub_config
-    chroot "$chroot_path" update-grub
+    if [ $ret -ne 0 ];then
+        # Update grub only if there were changes
+        cp /tmp/grub ${chroot_path}/${grub_config}
+        chroot "$chroot_path" update-grub
+    fi
 
     echo $ret
     exit 0
