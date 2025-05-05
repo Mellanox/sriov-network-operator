@@ -123,8 +123,8 @@ func (s *service) EnableService(service *types.Service) error {
 	return err
 }
 
-// ReloadService reloads a systemd unit file on the host
-func (s *service) ReloadService(service *types.Service) error {
+// ReloadServiceDaemon reloads a systemd unit file on the host
+func (s *service) ReloadServiceDaemon() error {
 	// Change root dir
 	exit, err := s.utilsHelper.Chroot(consts.Chroot)
 	if err != nil {
@@ -133,7 +133,7 @@ func (s *service) ReloadService(service *types.Service) error {
 	defer exit()
 
 	// Restart the service
-	_, _, err = s.utilsHelper.RunCommand("systemctl", "daemon-reload", service.Name)
+	_, _, err = s.utilsHelper.RunCommand("systemctl", "daemon-reload")
 	return err
 }
 
