@@ -298,7 +298,7 @@ func (p *K8sPlugin) updateOVSService() error {
 			log.Log.Error(err, "k8s plugin updateOVSService(): failed to update systemd service")
 			return err
 		}
-		err = p.hostHelper.ReloadService(p.openVSwitchService)
+		err = p.hostHelper.ReloadServiceDaemon()
 		if err != nil {
 			log.Log.Error(err, "k8s plugin updateOVSService(): failed to reload systemd unit files")
 			return err

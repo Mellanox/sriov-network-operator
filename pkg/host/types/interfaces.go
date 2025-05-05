@@ -121,8 +121,8 @@ type ServiceInterface interface {
 	ReadService(servicePath string) (*Service, error)
 	// EnableService enables a systemd service on the host
 	EnableService(service *Service) error
-	// ReloadService reloads a systemd unit file on the host
-	ReloadService(service *Service) error
+	// ReloadServiceDaemon reloads the systemd daemon on the host to pick up changes in services
+	ReloadServiceDaemon() error
 	// RestartService restarts a systemd service on the host
 	RestartService(service *Service) error
 	// ReadServiceManifestFile reads the systemd manifest for a specific service

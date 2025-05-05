@@ -208,7 +208,7 @@ var _ = Describe("K8s plugin", func() {
 		).Return(true, nil)
 		hostHelper.EXPECT().Chroot("/host").Return(nil, fmt.Errorf("test"))
 		hostHelper.EXPECT().UpdateSystemService(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
-		hostHelper.EXPECT().ReloadService(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
+		hostHelper.EXPECT().ReloadServiceDaemon().Return(nil)
 		hostHelper.EXPECT().RestartService(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
 		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(&sriovnetworkv1.SriovNetworkNodeState{
 			Spec: sriovnetworkv1.SriovNetworkNodeStateSpec{Interfaces: []sriovnetworkv1.Interface{{EswitchMode: "switchdev"}}}})
@@ -229,7 +229,7 @@ var _ = Describe("K8s plugin", func() {
 		hostHelper.EXPECT().Chroot("/host").Return(func() error { return nil }, nil)
 		hostHelper.EXPECT().RunCommand("ovs-vsctl", "get", "Open_vSwitch", ".", "other_config:hw-offload").Return("\"true\"\n", "", nil)
 		hostHelper.EXPECT().UpdateSystemService(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
-		hostHelper.EXPECT().ReloadService(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
+		hostHelper.EXPECT().ReloadServiceDaemon().Return(nil)
 		hostHelper.EXPECT().RestartService(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
 		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(&sriovnetworkv1.SriovNetworkNodeState{
 			Spec: sriovnetworkv1.SriovNetworkNodeStateSpec{Interfaces: []sriovnetworkv1.Interface{{EswitchMode: "switchdev"}}}})
