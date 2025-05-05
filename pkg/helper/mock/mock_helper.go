@@ -977,18 +977,18 @@ func (mr *MockHostHelpersInterfaceMockRecorder) RebindVfToDefaultDriver(pciAddr 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RebindVfToDefaultDriver", reflect.TypeOf((*MockHostHelpersInterface)(nil).RebindVfToDefaultDriver), pciAddr)
 }
 
-// ReloadService mocks base method.
-func (m *MockHostHelpersInterface) ReloadService(service *types.Service) error {
+// ReloadServiceDaemon mocks base method.
+func (m *MockHostHelpersInterface) ReloadServiceDaemon() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReloadService", service)
+	ret := m.ctrl.Call(m, "ReloadServiceDaemon")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// ReloadService indicates an expected call of ReloadService.
-func (mr *MockHostHelpersInterfaceMockRecorder) ReloadService(service any) *gomock.Call {
+// ReloadServiceDaemon indicates an expected call of ReloadServiceDaemon.
+func (mr *MockHostHelpersInterfaceMockRecorder) ReloadServiceDaemon() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReloadService", reflect.TypeOf((*MockHostHelpersInterface)(nil).ReloadService), service)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReloadServiceDaemon", reflect.TypeOf((*MockHostHelpersInterface)(nil).ReloadServiceDaemon))
 }
 
 // RemoveDisableNMUdevRule mocks base method.
