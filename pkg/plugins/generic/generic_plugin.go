@@ -3,6 +3,7 @@ package generic
 import (
 	"errors"
 	"fmt"
+	"os"
 	"syscall"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -271,7 +272,7 @@ func needDriverCheckVdpaType(state *sriovnetworkv1.SriovNetworkNodeState, driver
 func editKernelArg(helper helper.HostHelpersInterface, mode, karg string) error {
 	log.Log.Info("generic plugin editKernelArg()", "mode", mode, "karg", karg)
 	script := daemonScriptsPath
-	if vars.UsingSystemdMode {
+	if _, err := os.Stat(consts.Host); errors.Is(err, os.ErrNotExist) {
 		script = systemdScriptsPath
 	}
 	_, _, err := helper.RunCommand("/bin/bash", script, mode, karg)
