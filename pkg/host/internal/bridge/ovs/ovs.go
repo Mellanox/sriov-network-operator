@@ -170,9 +170,35 @@ func (o *ovs) CreateOVSBridge(ctx context.Context, conf *sriovnetworkv1.OVSConfi
 		funcLog.Error(err, "CreateOVSBridge(): failed to get bridge after creation")
 		return err
 	}
-	if err := o.ensureInternalInterface(ctx, funcLog, dbClient, bridge); err != nil {
-		funcLog.Error(err, "CreateOVSBridge(): failed to add internal interface to the bridge")
+	funcLog.V(2).Info("CreateOVSBridge(): Check if internal interface exists in the bridge")
+	existingIface, err := o.getInterfaceByName(ctx, dbClient, bridge.Name)
+	if err != nil {
+		funcLog.Error(err, "CreateOVSBridge(): failed to check internal interface in the bridge")
 		return err
+	}
+	if existingIface != nil {
+		// If interface exists but is in error state, we should remove it
+		if existingIface.Error != nil {
+			funcLog.V(2).Info("CreateOVSBridge(): internal interface exists but is in error state, removing it", "error", *existingIface.Error)
+			if err := o.deleteInterfaceByName(ctx, dbClient, bridge.Name); err != nil {
+				funcLog.Error(err, "CreateOVSBridge(): failed to remove internal interface in error state")
+				return err
+			}
+			existingIface = nil
+		} else {
+			funcLog.V(2).Info("CreateOVSBridge(): internal interface already exists and is valid")
+		}
+	}
+	if existingIface == nil {
+		funcLog.V(2).Info("CreateOVSBridge(): add internal interface to the bridge")
+		if err := o.addInterface(ctx, dbClient, bridge, &InterfaceEntry{
+			Name: bridge.Name,
+			UUID: uuid.NewString(),
+			Type: "internal",
+		}); err != nil {
+			funcLog.Error(err, "CreateOVSBridge(): failed to add internal interface to the bridge")
+			return err
+		}
 	}
 	funcLog.V(2).Info("CreateOVSBridge(): add uplink interface to the bridge")
 	if err := o.addInterface(ctx, dbClient, bridge, &InterfaceEntry{
