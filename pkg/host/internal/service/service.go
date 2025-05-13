@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/coreos/go-systemd/v22/unit"
@@ -178,9 +179,17 @@ OUTER:
 
 func (s *service) renderOtherOvsConfigOption(ovsConfig map[string]string) (string, string) {
 	otherConfig := new(bytes.Buffer)
-	externalIds := make([]string, len(ovsConfig))
-	for key, value := range ovsConfig {
-		fmt.Fprintf(otherConfig, "other_config:%s=\"%s\" ", key, value)
+	externalIds := make([]string, 0)
+
+	// We need to generate externalIds in a deterministic so our systemd unit will be the same on each reconcile loop
+	sortedKeys := make([]string, 0)
+	for key := range ovsConfig {
+		sortedKeys = append(sortedKeys, key)
+	}
+	slices.Sort(sortedKeys)
+
+	for _, key := range sortedKeys {
+		fmt.Fprintf(otherConfig, "other_config:%s=\"%s\" ", key, ovsConfig[key])
 		externalIds = append(externalIds, key)
 	}
 	return strings.Join(externalIds, " "), otherConfig.String()
