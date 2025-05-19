@@ -8,41 +8,34 @@ on:
       - network-operator-*
 
 jobs:
-  determine-docker-registry-and-tag:
+  determine-docker-tag:
     runs-on: ubuntu-latest
-    env:
-      REGISTRY_INTERNAL: nvcr.io/nvstaging/mellanox
-      REGISTRY_PUBLIC: nvcr.io/nvidia/mellanox
     steps:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: .
       - if: github.ref_type == 'branch'
-        name: Determine docker registry and tag (when git branch)
+        name: Determine docker tag (when git branch)
         run: |
-          echo DOCKER_REGISTRY=$REGISTRY_INTERNAL | tee -a $GITHUB_ENV
           echo DOCKER_TAG=$(git rev-parse --short HEAD) | tee -a $GITHUB_ENV  # short git commit hash
       - if: github.ref_type == 'tag'
-        name: Determine docker registry and tag (when git tag)
+        name: Determine docker tag (when git tag)
         run: |
-          echo DOCKER_REGISTRY=$(echo ${{ github.ref_name }} | sed 's/network-operator-//' | grep -q '-' && echo $REGISTRY_INTERNAL || echo $REGISTRY_PUBLIC) | tee -a $GITHUB_ENV  # use public registry only when release tag has no '-beta*' or '-rc*' suffix
           echo DOCKER_TAG=${{ github.ref_name }} | tee -a $GITHUB_ENV
-      - name: Store docker registry and tag for following jobs
-        id: store-docker-registry-and-tag
+      - name: Store docker tag for following jobs
+        id: store-docker-tag
         run: |
-          echo DOCKER_REGISTRY=$DOCKER_REGISTRY >> $GITHUB_OUTPUT
           echo DOCKER_TAG=$DOCKER_TAG >> $GITHUB_OUTPUT
     outputs:
-      docker_registry: ${{ steps.store-docker-registry-and-tag.outputs.DOCKER_REGISTRY }}
-      docker_tag: ${{ steps.store-docker-registry-and-tag.outputs.DOCKER_TAG }}
+      docker_tag: ${{ steps.store-docker-tag.outputs.DOCKER_TAG }}
 
   build-and-push-images:
-    needs: determine-docker-registry-and-tag
+    needs: determine-docker-tag
     runs-on: ubuntu-latest
     env:
       BUILD_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le
-      DOCKER_REGISTRY: ${{ needs.determine-docker-registry-and-tag.outputs.docker_registry }}
-      DOCKER_TAG: ${{ needs.determine-docker-registry-and-tag.outputs.docker_tag }}
+      DOCKER_REGISTRY: nvcr.io/nvstaging/mellanox
+      DOCKER_TAG: ${{ needs.determine-docker-tag.outputs.docker_tag }}
     strategy:
       matrix:
         include:
@@ -74,12 +67,12 @@ jobs:
 
   update-network-operator-values:
     needs:
-      - determine-docker-registry-and-tag
+      - determine-docker-tag
       - build-and-push-images
     runs-on: ubuntu-latest
     env:
-      DOCKER_REGISTRY: ${{ needs.determine-docker-registry-and-tag.outputs.docker_registry }}
-      DOCKER_TAG: ${{ needs.determine-docker-registry-and-tag.outputs.docker_tag }}
+      DOCKER_TAG: ${{ needs.determine-docker-tag.outputs.docker_tag }}
+      DOCKER_REGISTRY: nvcr.io/nvstaging/mellanox
       GH_TOKEN: ${{ secrets.GH_TOKEN_NVIDIA_CI_CD }}
     steps:
       - uses: actions/checkout@v4
