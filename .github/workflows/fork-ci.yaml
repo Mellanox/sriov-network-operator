@@ -48,13 +48,13 @@ jobs:
         include:
           - component: operator
             image_name: sriov-network-operator
-            dockerfile: Dockerfile
+            dockerfile: Dockerfile.nvidia
           - component: config-daemon
             image_name: sriov-network-operator-config-daemon
-            dockerfile: Dockerfile.sriov-network-config-daemon
+            dockerfile: Dockerfile.sriov-network-config-daemon.nvidia
           - component: webhook
             image_name: sriov-network-operator-webhook
-            dockerfile: Dockerfile.webhook
+            dockerfile: Dockerfile.webhook.nvidia
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
