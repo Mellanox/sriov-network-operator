@@ -48,8 +48,6 @@ import (
 )
 
 var (
-	cancel        context.CancelFunc
-	ctx           context.Context
 	k8sManager    manager.Manager
 	kubeclient    *kubernetes.Clientset
 	eventRecorder *daemon.EventRecorder
@@ -69,8 +67,12 @@ const (
 
 var _ = Describe("Daemon Controller", Ordered, func() {
 	BeforeAll(func() {
-		ctx, cancel = context.WithCancel(context.Background())
 		wg = sync.WaitGroup{}
+		DeferCleanup(wg.Wait)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		DeferCleanup(cancel)
+
 		startDaemon = func(dc *daemon.NodeReconciler) {
 			By("start controller manager")
 			wg.Add(1)
@@ -133,14 +135,9 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 	})
 
 	AfterEach(func() {
+		Expect(k8sClient.DeleteAllOf(context.Background(), &corev1.Node{})).ToNot(HaveOccurred())
+
 		Expect(k8sClient.DeleteAllOf(context.Background(), &sriovnetworkv1.SriovNetworkNodeState{}, client.InNamespace(testNamespace))).ToNot(HaveOccurred())
-
-		By("Shutdown controller manager")
-		cancel()
-		wg.Wait()
-	})
-
-	AfterAll(func() {
 		Expect(k8sClient.DeleteAllOf(context.Background(), &sriovnetworkv1.SriovOperatorConfig{}, client.InNamespace(testNamespace))).ToNot(HaveOccurred())
 	})
 
@@ -153,7 +150,7 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 			}
 		})
 
-		It("Should expose nodeState Status section", func() {
+		It("Should expose nodeState Status section", func(ctx context.Context) {
 			By("Init mock functions")
 			afterConfig := false
 			hostHelper.EXPECT().DiscoverSriovDevices(hostHelper).DoAndReturn(func(helpersInterface helper.HostHelpersInterface) ([]sriovnetworkv1.InterfaceExt, error) {
@@ -280,7 +277,7 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 			Expect(nodeState.Status.LastSyncError).To(Equal(""))
 		})
 
-		It("Should apply the reset configuration when disableDrain is true", func() {
+		It("Should apply the reset configuration when disableDrain is true", func(ctx context.Context) {
 			DeferCleanup(func(x bool) { vars.DisableDrain = x }, vars.DisableDrain)
 			vars.DisableDrain = true
 
@@ -369,7 +366,7 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 func patchAnnotation(nodeState *sriovnetworkv1.SriovNetworkNodeState, key, value string) {
 	originalNodeState := nodeState.DeepCopy()
 	nodeState.Annotations[key] = value
-	err := k8sClient.Patch(ctx, nodeState, client.MergeFrom(originalNodeState))
+	err := k8sClient.Patch(context.Background(), nodeState, client.MergeFrom(originalNodeState))
 	Expect(err).ToNot(HaveOccurred())
 }
 
@@ -398,8 +395,8 @@ func createNode(nodeName string) (*corev1.Node, *sriovnetworkv1.SriovNetworkNode
 		},
 	}
 
-	Expect(k8sClient.Create(ctx, &node)).ToNot(HaveOccurred())
-	Expect(k8sClient.Create(ctx, &nodeState)).ToNot(HaveOccurred())
+	Expect(k8sClient.Create(context.Background(), &node)).ToNot(HaveOccurred())
+	Expect(k8sClient.Create(context.Background(), &nodeState)).ToNot(HaveOccurred())
 	vars.NodeName = nodeName
 
 	return &node, &nodeState
