@@ -131,6 +131,5 @@ jobs:
               --base $BASE_BRANCH \
               --head $(git branch --show-current) \
               --title "cicd: update SR-IOV images tags to $DOCKER_TAG in chart values" \
-              --body "Created by the *${{ github.job }}* job."
               --body "Created by the [*${{ github.job }}* job](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           fi
