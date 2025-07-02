@@ -11,5 +11,7 @@ jobs:
     with:
       upstream-owner: k8snetworkplumbingwg
       default-branch: master
+      service-account-username: nvidia-ci-cd
+      service-account-email: svc-cloud-orch-gh@nvidia.com
     secrets:
-      gh_token: ${{ secrets.GITHUB_TOKEN }}
+      gh_token: ${{ secrets.GH_TOKEN_NVIDIA_CI_CD }}
