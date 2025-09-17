@@ -32,6 +32,7 @@ export WATCH_NAMESPACE?=openshift-sriov-network-operator
 export HOME?=$(PWD)
 export GOPATH?=$(shell go env GOPATH)
 export GO111MODULE=on
+GOPROXY ?= $(shell go env GOPROXY)
 PKGS=$(shell go list ./... | grep -v -E '/vendor/|/test|/examples')
 TESTPKGS?=./...
 
@@ -71,9 +72,9 @@ clean:
 	@rm -rf $(BIN_DIR)
 
 image: ; $(info Building images...)
-	$(IMAGE_BUILDER) build -f $(DOCKERFILE) -t $(IMAGE_TAG) $(CURPATH) $(IMAGE_BUILD_OPTS)
-	$(IMAGE_BUILDER) build -f $(DOCKERFILE_CONFIG_DAEMON) -t $(CONFIG_DAEMON_IMAGE_TAG) $(CURPATH) $(IMAGE_BUILD_OPTS)
-	$(IMAGE_BUILDER) build -f $(DOCKERFILE_WEBHOOK) -t $(WEBHOOK_IMAGE_TAG) $(CURPATH) $(IMAGE_BUILD_OPTS)
+	$(IMAGE_BUILDER) build -f $(DOCKERFILE) -t $(IMAGE_TAG) $(CURPATH) GOPROXY="$(GOPROXY)" $(IMAGE_BUILD_OPTS)
+	$(IMAGE_BUILDER) build -f $(DOCKERFILE_CONFIG_DAEMON) -t $(CONFIG_DAEMON_IMAGE_TAG) $(CURPATH) GOPROXY="$(GOPROXY)" $(IMAGE_BUILD_OPTS)
+	$(IMAGE_BUILDER) build -f $(DOCKERFILE_WEBHOOK) -t $(WEBHOOK_IMAGE_TAG) $(CURPATH) GOPROXY="$(GOPROXY)" $(IMAGE_BUILD_OPTS)
 
 # Run tests
 test: generate lint manifests envtest
