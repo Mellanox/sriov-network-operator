@@ -273,7 +273,7 @@ func main() {
 
 func setupDrainController(mgr ctrl.Manager, restConfig *rest.Config,
 	platformsHelper platforms.Interface, scheme *runtime.Scheme) error {
-	if controllers.UseMaintenanceOperatorDrainer() {
+	if vars.UseExternalDrainer {
 		setupLog.Info("internal drain controller is disabled, draining will be done externally by the maintenance operator")
 		return nil
 	}
