@@ -458,6 +458,9 @@ func (n *network) DiscoverRDMASubsystem() (string, error) {
 func (n *network) SetRDMASubsystem(mode string) error {
 	log.Log.Info("SetRDMASubsystem(): Updating RDMA subsystem mode", "mode", mode)
 	path := filepath.Join(vars.FilesystemRoot, consts.Host, "etc", "modprobe.d", "sriov_network_operator_modules_config.conf")
+	if _, err := os.Stat(filepath.Join(vars.FilesystemRoot, consts.Host)); errors.Is(err, os.ErrNotExist) {
+		path = filepath.Join(vars.FilesystemRoot, "/etc", "modprobe.d", "sriov_network_operator_modules_config.conf")
+	}
 
 	if mode == "" {
 		err := os.Remove(path)

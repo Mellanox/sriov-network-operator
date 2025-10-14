@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-logr/logr"
 	"github.com/google/uuid"
 	"github.com/ovn-org/libovsdb/client"
 	"github.com/ovn-org/libovsdb/model"
@@ -170,27 +169,6 @@ func (o *ovs) CreateOVSBridge(ctx context.Context, conf *sriovnetworkv1.OVSConfi
 		funcLog.Error(err, "CreateOVSBridge(): failed to get bridge after creation")
 		return err
 	}
-	if err := o.ensureInternalInterface(ctx, funcLog, dbClient, bridge); err != nil {
-		funcLog.Error(err, "CreateOVSBridge(): failed to add internal interface to the bridge")
-		return err
-	}
-	funcLog.V(2).Info("CreateOVSBridge(): add uplink interface to the bridge")
-	if err := o.addInterface(ctx, dbClient, bridge, &InterfaceEntry{
-		Name:        conf.Uplinks[0].Name,
-		UUID:        uuid.NewString(),
-		Type:        conf.Uplinks[0].Interface.Type,
-		Options:     conf.Uplinks[0].Interface.Options,
-		ExternalIDs: conf.Uplinks[0].Interface.ExternalIDs,
-		OtherConfig: conf.Uplinks[0].Interface.OtherConfig,
-		MTURequest:  conf.Uplinks[0].Interface.MTURequest,
-	}); err != nil {
-		funcLog.Error(err, "CreateOVSBridge(): failed to add uplink interface to the bridge")
-		return err
-	}
-	return nil
-}
-
-func (o *ovs) ensureInternalInterface(ctx context.Context, funcLog logr.Logger, dbClient client.Client, bridge *BridgeEntry) error {
 	funcLog.V(2).Info("CreateOVSBridge(): Check if internal interface exists in the bridge")
 	existingIface, err := o.getInterfaceByName(ctx, dbClient, bridge.Name)
 	if err != nil {
@@ -208,17 +186,30 @@ func (o *ovs) ensureInternalInterface(ctx context.Context, funcLog logr.Logger, 
 			existingIface = nil
 		} else {
 			funcLog.V(2).Info("CreateOVSBridge(): internal interface already exists and is valid")
-			return nil // Interface is already in the desired state, return early
 		}
 	}
-	// existingIface is nil here, so we need to create it
-	funcLog.V(2).Info("CreateOVSBridge(): add internal interface to the bridge")
+	if existingIface == nil {
+		funcLog.V(2).Info("CreateOVSBridge(): add internal interface to the bridge")
+		if err := o.addInterface(ctx, dbClient, bridge, &InterfaceEntry{
+			Name: bridge.Name,
+			UUID: uuid.NewString(),
+			Type: "internal",
+		}); err != nil {
+			funcLog.Error(err, "CreateOVSBridge(): failed to add internal interface to the bridge")
+			return err
+		}
+	}
+	funcLog.V(2).Info("CreateOVSBridge(): add uplink interface to the bridge")
 	if err := o.addInterface(ctx, dbClient, bridge, &InterfaceEntry{
-		Name: bridge.Name,
-		UUID: uuid.NewString(),
-		Type: "internal",
+		Name:        conf.Uplinks[0].Name,
+		UUID:        uuid.NewString(),
+		Type:        conf.Uplinks[0].Interface.Type,
+		Options:     conf.Uplinks[0].Interface.Options,
+		ExternalIDs: conf.Uplinks[0].Interface.ExternalIDs,
+		OtherConfig: conf.Uplinks[0].Interface.OtherConfig,
+		MTURequest:  conf.Uplinks[0].Interface.MTURequest,
 	}); err != nil {
-		funcLog.Error(err, "CreateOVSBridge(): failed to add internal interface to the bridge")
+		funcLog.Error(err, "CreateOVSBridge(): failed to add uplink interface to the bridge")
 		return err
 	}
 	return nil

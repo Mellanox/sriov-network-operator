@@ -21,14 +21,21 @@ command=$1
 shift
 declare -a kargs=( "$@" )
 ret=0
-args=$(chroot /host/ cat /proc/cmdline)
 
-IS_OS_UBUNTU=true; [[ "$(chroot /host/ grep -i ubuntu /etc/os-release -c)" == "0" ]] && IS_OS_UBUNTU=false
+if [[ -d "/bindata/scripts" ]];then
+    chroot_path="/host/"
+else
+    chroot_path="/"
+fi
+
+args=$(chroot "$chroot_path" cat /proc/cmdline)
+
+IS_OS_UBUNTU=true; [[ "$(chroot "$chroot_path" grep -i ubuntu /etc/os-release -c)" == "0" ]] && IS_OS_UBUNTU=false
 
 if ${IS_OS_UBUNTU} ; then
     grub_config="/etc/default/grub"
     # Operate on the copy of the file
-    cp /host/${grub_config} /tmp/grub
+    cp ${chroot_path}/${grub_config} /tmp/grub
 
     for t in "${kargs[@]}";do
         if [[ $command == "add" ]];then
@@ -51,8 +58,8 @@ if ${IS_OS_UBUNTU} ; then
 
             if [ $found == false ];then
                 # Append to the end of the line
-                t="${arr[@]} ${t}"
-                sed -i "s/\(^\s*GRUB_CMDLINE_LINUX_DEFAULT=\"\)\(.*\)\"/\1${t}\"/" /tmp/grub
+                new_param="${arr[@]} ${t}"
+                sed -i "s/\(^\s*$g\"\)\(.*\)\"/\1${new_param}\"/" /tmp/grub
                 let ret++
             fi
         fi
@@ -64,7 +71,6 @@ if ${IS_OS_UBUNTU} ; then
                 while read line;do
                     if [[ "$line" =~ GRUB_CMDLINE_LINUX ]];then
                         IFS='"' read g param q <<< "$line"
-
                         arr=($param)
                         new_param=""
 
@@ -82,35 +88,35 @@ if ${IS_OS_UBUNTU} ; then
 
     if [ $ret -ne 0 ];then
         # Update grub only if there were changes
-        cp /tmp/grub /host/${grub_config}
-        chroot "/host" update-grub
+        cp /tmp/grub ${chroot_path}/${grub_config}
+        chroot "$chroot_path" update-grub
     fi
 
     echo $ret
     exit 0
 fi
 
-if chroot /host/ test -f /run/ostree-booted ; then
+if chroot "$chroot_path" test -f /run/ostree-booted ; then
     for t in "${kargs[@]}";do
         if [[ $command == "add" ]];then
           if [[ $args != *${t}* ]];then
-              if chroot /host/ rpm-ostree kargs | grep -vq ${t}; then
-                  chroot /host/ rpm-ostree kargs --append ${t} > /dev/null 2>&1
+              if chroot "$chroot_path" rpm-ostree kargs | grep -vq ${t}; then
+                  chroot "$chroot_path" rpm-ostree kargs --append ${t} > /dev/null 2>&1
               fi
               let ret++
           fi
         fi
         if [[ $command == "remove" ]];then
           if [[ $args == *${t}* ]];then
-                if chroot /host/ rpm-ostree kargs | grep -q ${t}; then
-                    chroot /host/ rpm-ostree kargs --delete ${t} > /dev/null 2>&1
+                if chroot "$chroot_path" rpm-ostree kargs | grep -q ${t}; then
+                    chroot "$chroot_path" rpm-ostree kargs --delete ${t} > /dev/null 2>&1
                 fi
                 let ret++
             fi
         fi
     done
 else
-    chroot /host/ which grubby > /dev/null 2>&1
+    chroot "$chroot_path" which grubby > /dev/null 2>&1
     # if grubby is not there, let's tell it
     if [ $? -ne 0 ]; then
         exit 127
@@ -118,16 +124,16 @@ else
     for t in "${kargs[@]}";do
       if [[ $command == "add" ]];then
         if [[ $args != *${t}* ]];then
-            if chroot /host/ grubby --info=DEFAULT | grep args | grep -vq ${t}; then
-                chroot /host/ grubby --update-kernel=DEFAULT --args=${t} > /dev/null 2>&1
+            if chroot "$chroot_path" grubby --info=DEFAULT | grep args | grep -vq ${t}; then
+                chroot "$chroot_path" grubby --update-kernel=DEFAULT --args=${t} > /dev/null 2>&1
             fi
             let ret++
         fi
       fi
       if [[ $command == "remove" ]];then
           if [[ $args == *${t}* ]];then
-            if chroot /host/ grubby --info=DEFAULT | grep args | grep -q ${t}; then
-                chroot /host/ grubby --update-kernel=DEFAULT --remove-args=${t} > /dev/null 2>&1
+            if chroot "$chroot_path" grubby --info=DEFAULT | grep args | grep -q ${t}; then
+                chroot "$chroot_path" grubby --update-kernel=DEFAULT --remove-args=${t} > /dev/null 2>&1
             fi
             let ret++
           fi
