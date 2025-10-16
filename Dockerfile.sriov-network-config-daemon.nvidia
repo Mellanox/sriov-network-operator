@@ -23,7 +23,7 @@ WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
 COPY . .
 RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
 
-FROM nvcr.io/nvidia/doca/doca:3.0.0-base-rt-host
+FROM nvcr.io/nvidia/doca/doca:3.1.0-base-rt-host
 ARG MSTFLINT=mstflint
 # We have to ensure that pciutils is installed. This package is needed for mstfwreset to succeed.
 # xref pkg/vendors/mellanox/mellanox.go#L150
