@@ -69,6 +69,7 @@ var (
 const (
 	waitTime  = 2 * time.Minute
 	retryTime = 5 * time.Second
+	nodeName  = "node1"
 )
 
 var _ = Describe("Daemon Controller", Ordered, func() {
@@ -168,7 +169,7 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 		daemonReconciler = createDaemon(hostHelper, platformHelper, featureGates, []string{})
 		startDaemon(daemonReconciler)
 
-		_, nodeState = createNode("node1")
+		_, nodeState = createNode(nodeName)
 	})
 
 	AfterAll(func() {
@@ -270,6 +271,11 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 					ToNot(HaveOccurred())
 
 				g.Expect(nodeState.Annotations[constants.NodeStateDrainAnnotation]).To(Equal(constants.DrainRequired))
+				// verify that external drainer annotation doesn't exist
+				node := &corev1.Node{}
+				g.Expect(k8sClient.Get(context.Background(), types.NamespacedName{Name: nodeName}, node)).
+					ToNot(HaveOccurred())
+				g.Expect(nodeState.Annotations).NotTo(ContainElement(constants.NodeStateExternalDrainerAnnotation))
 			}, waitTime, retryTime).Should(Succeed())
 
 			patchAnnotation(nodeState, constants.NodeStateDrainAnnotationCurrent, constants.DrainComplete)
@@ -350,6 +356,67 @@ var _ = Describe("Daemon Controller", Ordered, func() {
 
 			eventuallySyncStatusEqual(nodeState, constants.SyncStatusSucceeded)
 			assertLastStatusTransitionsContains(nodeState, 2, constants.SyncStatusInProgress)
+		})
+
+		It("Should apply external drainer annotation when useExternalDrainer is true", func(ctx context.Context) {
+			DeferCleanup(func(x bool) { vars.UseExternalDrainer = x }, vars.UseExternalDrainer)
+			vars.UseExternalDrainer = true
+
+			discoverSriovReturn.Store(&[]sriovnetworkv1.InterfaceExt{
+				{
+					Name:           "eno1",
+					Driver:         "ice",
+					PciAddress:     "0000:16:00.0",
+					DeviceID:       "1593",
+					Vendor:         "8086",
+					EswitchMode:    "legacy",
+					LinkAdminState: "up",
+					LinkSpeed:      "10000 Mb/s",
+					LinkType:       "ETH",
+					Mac:            "aa:bb:cc:dd:ee:ff",
+					Mtu:            1500,
+					TotalVfs:       2,
+					NumVfs:         0,
+				},
+			})
+
+			By("waiting for state to be in progress")
+			eventuallySyncStatusEqual(nodeState, constants.SyncStatusInProgress)
+
+			err := k8sClient.Get(ctx, types.NamespacedName{Namespace: nodeState.Namespace, Name: nodeState.Name}, nodeState)
+			Expect(err).ToNot(HaveOccurred())
+
+			By("waiting to require drain")
+			EventuallyWithOffset(1, func(g Gomega) {
+				g.Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: nodeState.Namespace, Name: nodeState.Name}, nodeState)).
+					ToNot(HaveOccurred())
+
+				g.Expect(nodeState.Annotations[constants.NodeStateDrainAnnotation]).To(Equal(constants.DrainRequired))
+			}, waitTime, retryTime).Should(Succeed())
+
+			// Validate status
+			EventuallyWithOffset(1, func(g Gomega) {
+				// get node by name
+				node := &corev1.Node{}
+				g.Expect(k8sClient.Get(context.Background(), types.NamespacedName{Name: nodeName}, node)).
+					ToNot(HaveOccurred())
+				g.Expect(nodeState.Annotations[constants.NodeStateExternalDrainerAnnotation]).To(Equal("true"))
+			}, waitTime, retryTime).Should(Succeed())
+
+			patchAnnotation(nodeState, constants.NodeStateDrainAnnotationCurrent, constants.DrainComplete)
+			// Validate status
+			EventuallyWithOffset(1, func(g Gomega) {
+				g.Expect(k8sClient.Get(context.Background(), types.NamespacedName{Namespace: nodeState.Namespace, Name: nodeState.Name}, nodeState)).
+					ToNot(HaveOccurred())
+
+				g.Expect(nodeState.Status.SyncStatus).To(Equal(constants.SyncStatusInProgress))
+				node := &corev1.Node{}
+				g.Expect(k8sClient.Get(context.Background(), types.NamespacedName{Name: nodeName}, node)).
+					ToNot(HaveOccurred())
+				// verify that external drainer annotation is removed
+				g.Expect(nodeState.Annotations).NotTo(ContainElement(constants.NodeStateExternalDrainerAnnotation))
+			}, waitTime, retryTime).Should(Succeed())
+
 		})
 	})
 })
