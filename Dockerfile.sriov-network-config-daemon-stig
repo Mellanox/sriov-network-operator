@@ -1,0 +1,15 @@
+FROM golang:1.23 AS builder
+WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
+COPY . .
+RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
+
+FROM nvcr.io/nvstaging/mellanox/ubuntu-pro-stig:24.04
+ARG MSTFLINT=mstflint
+# We have to ensure that pciutils is installed. This package is needed for mstfwreset to succeed.
+# xref pkg/vendors/mellanox/mellanox.go#L150
+RUN apt update && apt -y install hwdata pciutils mstflint
+LABEL io.k8s.display-name="sriov-network-config-daemon" \
+      io.k8s.description="This is a daemon that manage and config sriov network devices in Kubernetes cluster"
+COPY --from=builder /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator/build/_output/cmd/sriov-network-config-daemon /usr/bin/
+COPY bindata /bindata
+CMD ["/usr/bin/sriov-network-config-daemon"]
