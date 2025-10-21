@@ -208,7 +208,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := setupDrainController(mgr, restConfig, platformsHelper, scheme); err != nil {
+	if err := setupDrainController(mgr, restConfig, platformsHelper, mgr.GetScheme()); err != nil {
 		setupLog.Error(err, "unable to setup drain controller")
 		os.Exit(1)
 	}
@@ -273,9 +273,8 @@ func main() {
 
 func setupDrainController(mgr ctrl.Manager, restConfig *rest.Config,
 	platformsHelper platforms.Interface, scheme *runtime.Scheme) error {
-	if controllers.UseMaintenanceOperatorDrainer() {
-		setupLog.Info("internal drain controller is disabled, draining will be done externally by the maintenance operator")
-		return nil
+	if vars.UseExternalDrainer {
+		setupLog.Info("'UseExternalDrainer' is set, draining will be done externally")
 	}
 
 	// we need a client that doesn't use the local cache for the objects
