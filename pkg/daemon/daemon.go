@@ -424,12 +424,16 @@ func (dn *NodeReconciler) apply(ctx context.Context, desiredNodeState *sriovnetw
 		return ctrl.Result{}, err
 	}
 
-	// remove external drainer nodestate annotation
-	err = utils.AnnotateObject(ctx, desiredNodeState,
-		consts.NodeStateExternalDrainerAnnotation, "", dn.client)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			reqLogger.Error(err, "failed to remove node external drainer annotation")
+	// remove external drainer nodestate annotation if exists
+	annotations := desiredNodeState.GetAnnotations()
+	if _, ok := annotations[consts.NodeStateExternalDrainerAnnotation]; ok {
+		reqLogger.Info("remove external drainer nodestate annotation", "annotation", consts.NodeStateExternalDrainerAnnotation)
+		original := desiredNodeState.DeepCopy()
+		delete(annotations, consts.NodeStateExternalDrainerAnnotation)
+		desiredNodeState.SetAnnotations(annotations)
+		// Patch only the annotations
+		if err := dn.client.Patch(ctx, desiredNodeState, client.MergeFrom(original)); err != nil {
+			reqLogger.Error(err, "failed to patch nodestate after removing external drainer annotation")
 			return ctrl.Result{}, err
 		}
 	}
@@ -563,7 +567,7 @@ func (dn *NodeReconciler) handleDrain(ctx context.Context, desiredNodeState *sri
 		err := utils.AnnotateObject(ctx, desiredNodeState,
 			consts.NodeStateExternalDrainerAnnotation, "true", dn.client)
 		if err != nil {
-			funcLog.Error(err, "failed to add node external drainer annotation")
+			funcLog.Error(err, "failed to add nodestate external drainer annotation")
 			return false, err
 		}
 	}
