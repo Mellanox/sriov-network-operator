@@ -26,9 +26,9 @@ COPY . .
 RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
 
 FROM ${BASE_IMAGE_DOCA_BASE_RT_HOST:-nvcr.io/nvidia/doca/doca:3.1.0-base-rt-host}
-# We have to ensure that pciutils and dkms are installed. These packages are needed for mstfwreset to succeed.
+# We have to ensure that pciutils is installed. These packages are needed for mstfwreset to succeed.
 # xref pkg/vendors/mellanox/mellanox.go#L150
-RUN apt-get update && apt-get install -y hwdata pciutils curl dkms && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y hwdata pciutils curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ARG TARGETARCH
 ENV MFT_VERSION=4.33.0-169
