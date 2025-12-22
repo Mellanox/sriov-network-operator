@@ -16,17 +16,23 @@
 
 ARG BASE_IMAGE_GO_DISTROLESS_DEV
 
-FROM golang:1.23 AS builder
+FROM golang:1.25 AS builder
+
+ARG GOPROXY
+ENV GOPROXY=$GOPROXY
+
 WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
 COPY . .
 RUN make _build-manager BIN_PATH=build/_output/cmd
 RUN make _build-sriov-network-operator-config-cleanup BIN_PATH=build/_output/cmd
 
 FROM ${BASE_IMAGE_GO_DISTROLESS_DEV:-nvcr.io/nvidia/distroless/go:v3.2.1-dev}
+USER 65532:65532
 COPY --from=builder /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator/build/_output/cmd/manager /usr/bin/sriov-network-operator
 COPY --from=builder /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator/build/_output/cmd/sriov-network-operator-config-cleanup /usr/bin/sriov-network-operator-config-cleanup
 COPY bindata /bindata
 # copy project sources into the container
 COPY . /src
 ENV OPERATOR_NAME=sriov-network-operator
+WORKDIR /
 CMD ["/usr/bin/sriov-network-operator"]
