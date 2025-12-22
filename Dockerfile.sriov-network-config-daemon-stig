@@ -1,13 +1,31 @@
-FROM golang:1.23 AS builder
+FROM golang:1.25 AS builder
+
+ARG GOPROXY
+ENV GOPROXY=$GOPROXY
+
 WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
 COPY . .
 RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
 
 FROM nvcr.io/nvstaging/mellanox/ubuntu-pro-stig:24.04
-ARG MSTFLINT=mstflint
-# We have to ensure that pciutils is installed. This package is needed for mstfwreset to succeed.
+# We have to ensure that pciutils is installed. These packages are needed for mstfwreset to succeed.
 # xref pkg/vendors/mellanox/mellanox.go#L150
-RUN apt update && apt -y install hwdata pciutils mstflint
+RUN apt update && apt -y install hwdata pciutils curl
+
+ARG TARGETARCH
+ENV MFT_VERSION=4.33.0-169
+RUN case ${TARGETARCH} in \
+        amd64) ARCH=x86_64 ;; \
+        arm64) ARCH=arm64 ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    curl -fsSL https://www.mellanox.com/downloads/MFT/mft-${MFT_VERSION}-${ARCH}-deb.tgz | tar -xz -C /tmp && \
+    cd /tmp/mft-${MFT_VERSION}-${ARCH}-deb && \
+    ./install.sh --without-kernel
+
+RUN ln -s $(which mlxconfig) /usr/bin/mstconfig
+RUN ln -s $(which mlxfwreset) /usr/bin/mstfwreset
+
 LABEL io.k8s.display-name="sriov-network-config-daemon" \
       io.k8s.description="This is a daemon that manage and config sriov network devices in Kubernetes cluster"
 COPY --from=builder /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator/build/_output/cmd/sriov-network-config-daemon /usr/bin/
