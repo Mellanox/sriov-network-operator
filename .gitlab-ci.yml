@@ -1,0 +1,145 @@
+stages:
+  - build
+  - deploy
+
+variables:  # additional variables defined at the gitlab group scope
+  DOCKERFILE: Dockerfile.sriov-network-config-daemon-stig
+  DOCKER_REGISTRY: nvcr.io/nvstaging/mellanox
+  DOCKER_IMAGE_NAME: sriov-network-operator-config-daemon-stig-fips
+
+build-image:
+  stage: build
+  tags:
+    - os/linux
+    - type/docker
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^network-operator-.*$/'
+    - if: '$CI_COMMIT_BRANCH =~ /^network-operator-.*$/'
+  image: docker:24
+  services:
+    - docker:24-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    # validate variables and gitlab group variables
+    - |
+      for var in \
+        ARTIFACTORY_USERNAME \
+        ARTIFACTORY_TOKEN \
+        ARTIFACTORY_REGISTRY \
+        NVCR_USERNAME \
+        NVCR_TOKEN \
+        GITLAB_USERNAME \
+        GITLAB_TOKEN \
+        GITHUB_USERNAME \
+        GITHUB_TOKEN \
+        STIG_SCRIPTS_REPO \
+        UBUNTU_STIG_BASE_IMAGE
+      do
+        value=$(eval "echo \$$var")
+        echo "Validating variable $var..."
+        if [ -z "$value" ]; then
+          echo "ERROR: $var is empty or not set in GitLab repository settings!" >&2
+          exit 1
+        fi
+      done
+    # docker authentication
+    - echo $ARTIFACTORY_TOKEN | docker login $ARTIFACTORY_REGISTRY -u $ARTIFACTORY_USERNAME --password-stdin
+    - echo $NVCR_TOKEN        | docker login $DOCKER_REGISTRY      -u $NVCR_USERNAME        --password-stdin
+    # determine docker tag
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        export DOCKER_TAG=$CI_COMMIT_TAG
+      else
+        export DOCKER_TAG=$(git rev-parse --short HEAD)  # short git commit sha
+      fi
+    - echo "DOCKER_TAG=$DOCKER_TAG" | tee -a build.env
+    # fetch STIG FIPS scripts
+    - |
+      git clone \
+        --depth 1 \
+        --branch main \
+        https://$GITLAB_USERNAME:$GITLAB_TOKEN@$STIG_SCRIPTS_REPO \
+        /tmp/stig-scripts
+      chmod +x /tmp/stig-scripts/*.sh
+  script:
+    # build
+    - |
+      docker build \
+        --build-arg UBUNTU_STIG_BASE_IMAGE=$UBUNTU_STIG_BASE_IMAGE \
+        --secret    id=stig_script,src=/tmp/stig-scripts/stig-fixer.sh \
+        --file      $DOCKERFILE \
+        --tag       $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$DOCKER_TAG \
+        .
+    # FIPS package check
+    - /tmp/stig-scripts/fips-pkg-checker.sh $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$DOCKER_TAG
+    # push
+    - docker push $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$DOCKER_TAG
+  artifacts:
+    reports:
+      dotenv: build.env
+
+update-component-version-in-network-operator:
+  stage: deploy
+  needs:
+    - job: build-image
+      artifacts: true
+  tags:
+    - os/linux
+    - type/docker
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /^network-operator-.*$/'
+  image: golang:1-alpine
+  variables:  # additional variables defined at the gitlab group scope
+    GITHUB_EMAIL: svc-cloud-orch-gh@nvidia.com
+    COMPONENT_NAME: SriovConfigDaemonStigFips
+    DRY_RUN: false
+  before_script:
+    # install packages
+    - apk add --update git github-cli yq make
+    # configure git
+    - git config --global user.name  $GITHUB_USERNAME
+    - git config --global user.email $GITHUB_EMAIL
+    - gh auth setup-git
+    # checkout
+    - gh repo clone Mellanox/network-operator network-operator
+    - cd network-operator
+  script:
+    # update versions in hack/release.yaml and examples
+    - echo "Updating version for $COMPONENT_NAME"
+    - yq -i ".$COMPONENT_NAME.version = \"$DOCKER_TAG\"" hack/release.yaml
+    - make release-build
+    # create CI branch if needed
+    - |
+      if git diff --exit-code --color=always; then
+        export UPDATE_BRANCH=""
+      else
+        export UPDATE_BRANCH=ci/update-sriov-config-daemon-stig-fips-version-to-$DOCKER_TAG
+        git checkout -b $UPDATE_BRANCH
+      fi
+    - echo "UPDATE_BRANCH is $UPDATE_BRANCH"
+    # commit and push (if needed)
+    - |
+      if [ -n "$UPDATE_BRANCH" ]; then
+        git add .
+        git commit -sm "ci: update ${COMPONENT_NAME} version to $DOCKER_TAG"
+        dry_run=""
+        if [ "$DRY_RUN" = "true" ]; then
+          dry_run="echo DRY_RUN: would have run: "
+        fi
+        ${dry_run}git push -u origin "$UPDATE_BRANCH"
+      fi
+    # create PR (if needed)
+    - |
+      if [ -n "$UPDATE_BRANCH" ]; then
+        dry_run=""
+        if [ "$DRY_RUN" = "true" ]; then
+          dry_run="--dry-run"
+        fi
+        gh pr create $dry_run \
+          --head "$UPDATE_BRANCH" \
+          --base master \
+          --title "ci: update ${COMPONENT_NAME} version to $DOCKER_TAG (of branch $CI_COMMIT_BRANCH)" \
+          --body "Automated CI update for component '${COMPONENT_NAME}', created by internal GitLab CI for release branch $CI_COMMIT_BRANCH." \
+          --reviewer e0ne --reviewer almaslennikov --reviewer rollandf --reviewer heyvister1
+      fi

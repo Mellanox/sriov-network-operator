@@ -1,3 +1,5 @@
+ARG UBUNTU_STIG_BASE_IMAGE
+
 FROM golang:1.25 AS builder
 
 ARG GOPROXY
@@ -7,7 +9,7 @@ WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
 COPY . .
 RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
 
-FROM nvcr.io/nvstaging/mellanox/ubuntu-pro-stig:24.04
+FROM $UBUNTU_STIG_BASE_IMAGE
 # We have to ensure that pciutils is installed. These packages are needed for mstfwreset to succeed.
 # xref pkg/vendors/mellanox/mellanox.go#L150
 RUN apt update && apt -y install hwdata pciutils curl
@@ -30,4 +32,7 @@ LABEL io.k8s.display-name="sriov-network-config-daemon" \
       io.k8s.description="This is a daemon that manage and config sriov network devices in Kubernetes cluster"
 COPY --from=builder /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator/build/_output/cmd/sriov-network-config-daemon /usr/bin/
 COPY bindata /bindata
+
+RUN --mount=type=secret,id=stig_script,target=/tmp/stig-fixer.sh bash /tmp/stig-fixer.sh
+
 CMD ["/usr/bin/sriov-network-config-daemon"]
