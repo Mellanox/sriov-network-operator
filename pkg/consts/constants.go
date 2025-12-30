@@ -168,6 +168,10 @@ const (
 	DevlinkParamApplyOnVf = "VF"
 	DevlinkParamApplyOnSf = "SF"
 
+	OvsGroupingPolicyPerPF = "perPF"
+	OvsGroupingPolicyPerVF = "perVF"
+	OvsGroupingPolicyAll   = "all"
+
 	KernelArgPciRealloc    = "pci=realloc"
 	KernelArgIntelIommu    = "intel_iommu=on"
 	KernelArgIommuPt       = "iommu=pt"
