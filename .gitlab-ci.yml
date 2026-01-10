@@ -1,23 +1,49 @@
+# Copyright 2026 NVIDIA CORPORATION & AFFILIATES
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# SPDX-License-Identifier: Apache-2.0
+
+include:
+  - project: pstooling/gitlab-templates
+    ref: main
+    file:
+      - templates/pulse-in-pipeline/ContainerScanImage.gitlab-ci.yml
+      - templates/pulse-in-pipeline/ContainerStigScan.gitlab-ci.yml
+
 stages:
   - build
+  - pulse-scan-oss
+  - pulse-scan-stig
   - deploy
 
 variables:  # additional variables defined at the gitlab group scope
   DOCKERFILE: Dockerfile.sriov-network-config-daemon-stig
   DOCKER_REGISTRY: nvcr.io/nvstaging/mellanox
   DOCKER_IMAGE_NAME: sriov-network-operator-config-daemon-stig-fips
+  GOV_READY_POLICY_FILE_PATH: pulse-scan-policies/prodsec_approved_govready_release_policy.json
 
 build-image:
   stage: build
   tags:
     - os/linux
     - type/docker
+  services:
+    - docker:24-dind
   rules:
     - if: '$CI_COMMIT_TAG =~ /^network-operator-.*$/'
     - if: '$CI_COMMIT_BRANCH =~ /^network-operator-.*$/'
   image: docker:24
-  services:
-    - docker:24-dind
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
   before_script:
@@ -34,11 +60,18 @@ build-image:
         GITHUB_USERNAME \
         GITHUB_TOKEN \
         STIG_SCRIPTS_REPO \
-        UBUNTU_STIG_BASE_IMAGE
+        UBUNTU_STIG_BASE_IMAGE \
+        NSPECT_ID \
+        SSA_CLIENT_ID_PULSE_OSS \
+        SSA_CLIENT_SECRET_PULSE_OSS \
+        SSA_CLIENT_ID_PULSE_STIG \
+        SSA_CLIENT_SECRET_PULSE_STIG
       do
         value=$(eval "echo \$$var")
         echo "Validating variable $var..."
-        if [ -z "$value" ]; then
+        if [ -n "$value" ]; then
+          echo "$var=$value"
+        else
           echo "ERROR: $var is empty or not set in GitLab repository settings!" >&2
           exit 1
         fi
@@ -49,9 +82,9 @@ build-image:
     # determine docker tag
     - |
       if [ -n "$CI_COMMIT_TAG" ]; then
-        export DOCKER_TAG=$CI_COMMIT_TAG
+        DOCKER_TAG=$CI_COMMIT_TAG-stig-fips
       else
-        export DOCKER_TAG=$(git rev-parse --short HEAD)  # short git commit sha
+        DOCKER_TAG=$(git rev-parse --short HEAD)  # short git commit sha
       fi
     - echo "DOCKER_TAG=$DOCKER_TAG" | tee -a build.env
     # fetch STIG FIPS scripts
@@ -62,6 +95,20 @@ build-image:
         https://$GITLAB_USERNAME:$GITLAB_TOKEN@$STIG_SCRIPTS_REPO \
         /tmp/stig-scripts
       chmod +x /tmp/stig-scripts/*.sh
+    # fetch gov-ready pulse scanner policy
+    - |
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        git clone \
+          --depth 1 \
+          --branch main \
+          https://$GITLAB_USERNAME:$GITLAB_TOKEN@gitlab-master.nvidia.com/pstooling/container-scan-policy-documents.git \
+          $(dirname $GOV_READY_POLICY_FILE_PATH)
+        nspect_release_version=$(echo $CI_COMMIT_TAG | grep -Eo '[0-9\.]+' | head -n 1)-fedramp  # determine nspect release version
+        echo "NSPECT_RELEASE_VERSION=$nspect_release_version" | tee -a build.env
+      else
+        mkdir $(dirname $GOV_READY_POLICY_FILE_PATH)
+        touch $GOV_READY_POLICY_FILE_PATH  # dummy file, to prevent pipeline log warning that expects to upload an artifact from this path
+      fi
   script:
     # build
     - |
@@ -78,6 +125,8 @@ build-image:
   artifacts:
     reports:
       dotenv: build.env
+    paths:
+      - $GOV_READY_POLICY_FILE_PATH
 
 update-component-version-in-network-operator:
   stage: deploy
@@ -112,12 +161,12 @@ update-component-version-in-network-operator:
     # create CI branch if needed
     - |
       if git diff --exit-code --color=always; then
-        export UPDATE_BRANCH=""
+        UPDATE_BRANCH=""
       else
-        export UPDATE_BRANCH=ci/update-sriov-config-daemon-stig-fips-version-to-$DOCKER_TAG
+        UPDATE_BRANCH=ci/update-sriov-config-daemon-stig-fips-version-to-$DOCKER_TAG
         git checkout -b $UPDATE_BRANCH
       fi
-    - echo "UPDATE_BRANCH is $UPDATE_BRANCH"
+    - echo "UPDATE_BRANCH=$UPDATE_BRANCH"
     # commit and push (if needed)
     - |
       if [ -n "$UPDATE_BRANCH" ]; then
@@ -143,3 +192,46 @@ update-component-version-in-network-operator:
           --body "Automated CI update for component '${COMPONENT_NAME}', created by internal GitLab CI for release branch $CI_COMMIT_BRANCH." \
           --reviewer e0ne --reviewer almaslennikov --reviewer rollandf --reviewer heyvister1
       fi
+
+pulse-scan-oss:
+  stage: pulse-scan-oss
+  extends: .scan-image-no-policy
+  needs:
+    - job: build-image
+      artifacts: true
+  tags:
+    - os/linux
+    - type/docker
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^network-operator-.*$/'
+  variables:
+    SSA_CLIENT_ID: $SSA_CLIENT_ID_PULSE_OSS
+    SSA_CLIENT_SECRET: $SSA_CLIENT_SECRET_PULSE_OSS
+    PULSE_REGISTRY_NGC_PASSWORD: $NVCR_TOKEN
+    CONTAINER_IMAGE: $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$DOCKER_TAG
+    NSPECT_ID: $NSPECT_ID
+    PROGRAM_VERSION: $NSPECT_RELEASE_VERSION
+  allow_failure: true  # non gating (pipeline stages will display warnings instead of failures)
+
+pulse-scan-stig:
+  stage: pulse-scan-stig
+  extends: .stig-scan-image
+  needs:
+    - job: pulse-scan-oss
+    - job: build-image
+      artifacts: true
+  tags:
+    - os/linux
+    - type/docker
+  services:
+    - docker:24-dind
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^network-operator-.*$/'
+  variables:
+    SSA_CLIENT_ID: $SSA_CLIENT_ID_PULSE_STIG
+    SSA_CLIENT_SECRET: $SSA_CLIENT_SECRET_PULSE_STIG
+    PULSE_REGISTRY_NGC_PASSWORD: $NVCR_TOKEN
+    CONTAINER_IMAGE: $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$DOCKER_TAG
+    NSPECT_ID: $NSPECT_ID
+    PROGRAM_VERSION: $NSPECT_RELEASE_VERSION
+  allow_failure: true  # non gating (pipeline stages will display warnings instead of failures)
