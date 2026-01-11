@@ -196,7 +196,7 @@ func (p *MellanoxPlugin) OnNodeStateChange(new *sriovnetworkv1.SriovNetworkNodeS
 		}
 
 		if fwNext.TotalVfs > 0 || fwNext.EnableSriov {
-			attributesToChange[pciAddress] = mlx.MlxNic{TotalVfs: 0}
+			attributesToChange[pciAddress] = mlx.MlxNic{TotalVfs: 0, Multiport: -1}
 			log.Log.V(2).Info("Changing TotalVfs to 0, doesn't require rebooting", "fwNext.totalVfs", fwNext.TotalVfs)
 		}
 	}
