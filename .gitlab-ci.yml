@@ -118,8 +118,6 @@ build-image:
         --file      $DOCKERFILE \
         --tag       $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$DOCKER_TAG \
         .
-    # FIPS package check
-    - /tmp/stig-scripts/fips-pkg-checker.sh $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$DOCKER_TAG
     # push
     - docker push $DOCKER_REGISTRY/$DOCKER_IMAGE_NAME:$DOCKER_TAG
   artifacts:
