@@ -14,9 +14,9 @@ jobs:
       registry-internal: nvcr.io/nvstaging/mellanox
       service-account-username: nvidia-ci-cd
       service-account-email: svc-cloud-orch-gh@nvidia.com
-      components: '[{"name": "SriovNetworkOperator", "imageName": "sriov-network-operator", "Dockerfile": "Dockerfile.nvidia"},
-                    {"name": "SriovNetworkOperatorWebhook", "imageName": "sriov-network-operator-webhook", "Dockerfile": "Dockerfile.webhook.nvidia"},
-                    {"name": "SriovConfigDaemon", "imageName": "sriov-network-operator-config-daemon", "Dockerfile": "Dockerfile.sriov-network-config-daemon.nvidia"}]'
+      components: '[{"name": "SriovNetworkOperator", "imageName": "sriov-network-operator", "dockerfile": "Dockerfile.nvidia"},
+                    {"name": "SriovNetworkOperatorWebhook", "imageName": "sriov-network-operator-webhook", "dockerfile": "Dockerfile.webhook.nvidia"},
+                    {"name": "SriovConfigDaemon", "imageName": "sriov-network-operator-config-daemon", "dockerfile": "Dockerfile.sriov-network-config-daemon.nvidia"}]'
       chart-name: sriov-network-operator
       chart-path: "deployment/sriov-network-operator-chart"
       exclude-chart-files: '["Chart.yaml"]'
@@ -24,4 +24,3 @@ jobs:
       registry-username: ${{ secrets.NVCR_USERNAME }}
       registry-token: ${{ secrets.NVCR_TOKEN }}
       cicd-gh-token: ${{ secrets.GH_TOKEN_NVIDIA_CI_CD }}
-      goproxy: ${{ secrets.GO_PROXY_URL }}
