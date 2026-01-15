@@ -84,10 +84,10 @@ type ovs struct {
 func (o *ovs) CreateOVSBridge(ctx context.Context, conf *sriovnetworkv1.OVSConfigExt) error {
 	ctx, cancel := setDefaultTimeout(ctx)
 	defer cancel()
-	if len(conf.Uplinks) != 1 {
-		return fmt.Errorf("unsupported configuration, uplinks list must contain one element")
+	if len(conf.Uplinks) < 1 {
+		return fmt.Errorf("unsupported configuration, uplinks list must contain at least one element")
 	}
-	funcLog := log.Log.WithValues("bridge", conf.Name, "ifaceAddr", conf.Uplinks[0].PciAddress, "ifaceName", conf.Uplinks[0].Name)
+	funcLog := log.Log.WithValues("bridge", conf.Name, "numUplinks", len(conf.Uplinks))
 	funcLog.V(1).Info("CreateOVSBridge(): start configuration of the OVS bridge")
 
 	dbClient, err := getClient(ctx)
@@ -132,13 +132,15 @@ func (o *ovs) CreateOVSBridge(ctx context.Context, conf *sriovnetworkv1.OVSConfi
 	} else {
 		funcLog.V(2).Info("CreateOVSBridge(): configuration for the bridge not found in the store, create the bridge")
 	}
-	funcLog.V(2).Info("CreateOVSBridge(): ensure uplink is not attached to any bridge")
+	funcLog.V(2).Info("CreateOVSBridge(): ensure uplinks are not attached to any bridge")
 	// removal of the bridge should also remove all interfaces that are attached to it.
 	// we need to remove interface with additional call even if keepBridge is false to make
 	// sure that the interface is not attached to a different OVS bridge
-	if err := o.deleteInterfaceByName(ctx, dbClient, conf.Uplinks[0].Name); err != nil {
-		funcLog.Error(err, "CreateOVSBridge(): failed to remove uplink interface")
-		return err
+	for _, uplink := range conf.Uplinks {
+		if err := o.deleteInterfaceByName(ctx, dbClient, uplink.Name); err != nil {
+			funcLog.Error(err, "CreateOVSBridge(): failed to remove uplink interface", "uplink", uplink.Name)
+			return err
+		}
 	}
 	if !keepBridge {
 		// make sure that bridge with provided name not exist
@@ -176,18 +178,21 @@ func (o *ovs) CreateOVSBridge(ctx context.Context, conf *sriovnetworkv1.OVSConfi
 		funcLog.Error(err, "CreateOVSBridge(): failed to add internal interface to the bridge")
 		return err
 	}
-	funcLog.V(2).Info("CreateOVSBridge(): add uplink interface to the bridge")
-	if err := o.addInterface(ctx, dbClient, bridge, &InterfaceEntry{
-		Name:        conf.Uplinks[0].Name,
-		UUID:        uuid.NewString(),
-		Type:        conf.Uplinks[0].Interface.Type,
-		Options:     conf.Uplinks[0].Interface.Options,
-		ExternalIDs: conf.Uplinks[0].Interface.ExternalIDs,
-		OtherConfig: conf.Uplinks[0].Interface.OtherConfig,
-		MTURequest:  conf.Uplinks[0].Interface.MTURequest,
-	}); err != nil {
-		funcLog.Error(err, "CreateOVSBridge(): failed to add uplink interface to the bridge")
-		return err
+	// Add all uplink interfaces to the bridge
+	for _, uplink := range conf.Uplinks {
+		funcLog.V(2).Info("CreateOVSBridge(): add uplink interface to the bridge", "uplink", uplink.Name)
+		if err := o.addInterface(ctx, dbClient, bridge, &InterfaceEntry{
+			Name:        uplink.Name,
+			UUID:        uuid.NewString(),
+			Type:        uplink.Interface.Type,
+			Options:     uplink.Interface.Options,
+			ExternalIDs: uplink.Interface.ExternalIDs,
+			OtherConfig: uplink.Interface.OtherConfig,
+			MTURequest:  uplink.Interface.MTURequest,
+		}); err != nil {
+			funcLog.Error(err, "CreateOVSBridge(): failed to add uplink interface to the bridge", "uplink", uplink.Name)
+			return err
+		}
 	}
 	return nil
 }
