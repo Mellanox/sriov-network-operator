@@ -35,13 +35,17 @@ IS_OS_UBUNTU=true; [[ "$(chroot "$chroot_path" grep -i ubuntu /etc/os-release -c
 if ${IS_OS_UBUNTU} ; then
     grub_config="/etc/default/grub"
     # Operate on the copy of the file
-    cp ${chroot_path}/${grub_config} /tmp/grub
+    # Use host's /tmp because container root might be read-only
+    tmp_grub_path=$(chroot "$chroot_path" mktemp)
+    tmp_grub_in_container="${chroot_path}${tmp_grub_path}"
+    cp ${chroot_path}/${grub_config} "${tmp_grub_in_container}"
 
     for t in "${kargs[@]}";do
         if [[ $command == "add" ]];then
             # Modify only GRUB_CMDLINE_LINUX_DEFAULT line if it's not already present
-            line=$(grep -P "^\s*GRUB_CMDLINE_LINUX_DEFAULT" /tmp/grub)
+            line=$(grep -P "^\s*GRUB_CMDLINE_LINUX_DEFAULT" "${tmp_grub_in_container}")
             if [ $? -ne 0 ];then
+                rm -f "${tmp_grub_in_container}"
                 exit 1
             fi
 
@@ -59,14 +63,14 @@ if ${IS_OS_UBUNTU} ; then
             if [ $found == false ];then
                 # Append to the end of the line
                 new_param="${arr[@]} ${t}"
-                sed -i "s/\(^\s*$g\"\)\(.*\)\"/\1${new_param}\"/" /tmp/grub
+                sed -i "s/\(^\s*$g\"\)\(.*\)\"/\1${new_param}\"/" "${tmp_grub_in_container}"
                 let ret++
             fi
         fi
 
         if [[ $command == "remove" ]];then
             # Remove from everywhere, except commented lines
-            ret=$((ret + $(grep -E '^[[:space:]]*GRUB_CMDLINE_LINUX(_DEFAULT)?[[:space:]]*=.*(^|[[:space:]]|")'"$t"'([[:space:]]|"|$)' /tmp/grub | wc -l)))
+            ret=$((ret + $(grep -E '^[[:space:]]*GRUB_CMDLINE_LINUX(_DEFAULT)?[[:space:]]*=.*(^|[[:space:]]|")'"$t"'([[:space:]]|"|$)' "${tmp_grub_in_container}" | wc -l)))
             if [ $ret -gt 0 ];then
                 while read line;do
                     if [[ "$line" =~ GRUB_CMDLINE_LINUX ]];then
@@ -79,19 +83,20 @@ if ${IS_OS_UBUNTU} ; then
                                 new_param="${new_param} ${item}"
                             fi
                         done
-                        sed -i "s/\(^\s*$g\"\)\(.*\)\"/\1${new_param}\"/" /tmp/grub
+                        sed -i "s/\(^\s*$g\"\)\(.*\)\"/\1${new_param}\"/" "${tmp_grub_in_container}"
                     fi
-                done < /tmp/grub
+                done < "${tmp_grub_in_container}"
             fi
         fi
     done
 
     if [ $ret -ne 0 ];then
         # Update grub only if there were changes
-        cp /tmp/grub ${chroot_path}/${grub_config}
+        cp "${tmp_grub_in_container}" ${chroot_path}/${grub_config}
         chroot "$chroot_path" update-grub
     fi
 
+    rm -f "${tmp_grub_in_container}"
     echo $ret
     exit 0
 fi
