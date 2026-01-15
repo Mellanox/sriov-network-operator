@@ -12,7 +12,7 @@ RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
 FROM $UBUNTU_STIG_BASE_IMAGE
 # We have to ensure that pciutils is installed. These packages are needed for mstfwreset to succeed.
 # xref pkg/vendors/mellanox/mellanox.go#L150
-RUN apt update && apt -y install hwdata pciutils curl
+RUN apt update && apt -y install hwdata pciutils curl mstflint
 
 ARG TARGETARCH
 ENV MFT_VERSION=4.33.0-169
