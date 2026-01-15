@@ -1039,7 +1039,9 @@ func GenerateBridgeName(iface *InterfaceExt) string {
 
 // NeedToUpdateBridges returns true if bridge for the host requires update
 func NeedToUpdateBridges(bridgeSpec, bridgeStatus *Bridges) bool {
-	return !equality.Semantic.DeepEqual(bridgeSpec, bridgeStatus)
+	// Compare only OVS configurations, not GroupingPolicy which is a policy directive
+	// and not something that exists in the actual OVS state
+	return !equality.Semantic.DeepEqual(bridgeSpec.OVS, bridgeStatus.OVS)
 }
 
 // SetKeepUntilTime sets an annotation to hold the "keep until time" for the node’s state.
