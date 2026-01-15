@@ -1688,6 +1688,18 @@ func TestNeedToUpdateBridges(t *testing.T) {
 			statusBridge:   &v1.Bridges{OVS: []v1.OVSConfigExt{}},
 			expectedResult: true,
 		},
+		{
+			tname: "no update required - groupingPolicy difference should be ignored",
+			specBridge: &v1.Bridges{
+				GroupingPolicy: "all",
+				OVS:            []v1.OVSConfigExt{{Name: "br-test", Bridge: v1.OVSBridgeConfig{DatapathType: "netdev"}}},
+			},
+			statusBridge: &v1.Bridges{
+				// Status doesn't have GroupingPolicy since it's not stored in OVS
+				OVS: []v1.OVSConfigExt{{Name: "br-test", Bridge: v1.OVSBridgeConfig{DatapathType: "netdev"}}},
+			},
+			expectedResult: false,
+		},
 	}
 	for _, tc := range testtable {
 		t.Run(tc.tname, func(t *testing.T) {
