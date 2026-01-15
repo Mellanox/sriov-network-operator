@@ -651,47 +651,53 @@ func (o *ovs) getCurrentBridgeState(ctx context.Context, dbClient client.Client,
 	if len(knownConfig.Uplinks) == 0 {
 		return currentConfig, nil
 	}
-	knownConfigUplink := knownConfig.Uplinks[0]
-	iface, err := o.getInterfaceByName(ctx, dbClient, knownConfigUplink.Name)
-	if err != nil {
-		return nil, err
-	}
-	if iface == nil {
-		return currentConfig, nil
-	}
 
-	if iface.Error != nil {
-		funcLog.V(2).Info("getCurrentBridgeState(): interface has an error, remove it from the bridge state", "interface", iface.Name, "error", iface.Error)
-		// interface has an error, do not report info about it to let the operator try to recreate it
-		return currentConfig, nil
-	}
+	// Process all uplinks
+	for _, knownConfigUplink := range knownConfig.Uplinks {
+		iface, err := o.getInterfaceByName(ctx, dbClient, knownConfigUplink.Name)
+		if err != nil {
+			return nil, err
+		}
+		if iface == nil {
+			// Interface not found, skip it (bridge needs reconfiguration)
+			continue
+		}
 
-	port, err := o.getPortByInterface(ctx, dbClient, iface)
-	if err != nil {
-		return nil, err
-	}
-	if port == nil {
-		return currentConfig, nil
-	}
+		if iface.Error != nil {
+			funcLog.V(2).Info("getCurrentBridgeState(): interface has an error, skip it", "interface", iface.Name, "error", iface.Error)
+			// interface has an error, do not report info about it to let the operator try to recreate it
+			continue
+		}
 
-	if !bridge.HasPort(port.UUID) {
-		// interface belongs to a wrong bridge, do not include uplink config to
-		// the current bridge state to let the operator try to fix this
-		return currentConfig, nil
-	}
-	currentConfig.Uplinks = []sriovnetworkv1.OVSUplinkConfigExt{{
-		PciAddress: knownConfigUplink.PciAddress,
-		Name:       knownConfigUplink.Name,
-		Interface: sriovnetworkv1.OVSInterfaceConfig{
-			Type:        iface.Type,
-			ExternalIDs: updateMap(knownConfigUplink.Interface.ExternalIDs, iface.ExternalIDs),
-			Options:     updateMap(knownConfigUplink.Interface.Options, iface.Options),
-			OtherConfig: updateMap(knownConfigUplink.Interface.OtherConfig, iface.OtherConfig),
-		},
-	}}
-	if iface.MTURequest != nil {
-		mtu := *iface.MTURequest
-		currentConfig.Uplinks[0].Interface.MTURequest = &mtu
+		port, err := o.getPortByInterface(ctx, dbClient, iface)
+		if err != nil {
+			return nil, err
+		}
+		if port == nil {
+			// Port not found, skip it
+			continue
+		}
+
+		if !bridge.HasPort(port.UUID) {
+			// interface belongs to a wrong bridge, skip it
+			continue
+		}
+
+		uplinkConfig := sriovnetworkv1.OVSUplinkConfigExt{
+			PciAddress: knownConfigUplink.PciAddress,
+			Name:       knownConfigUplink.Name,
+			Interface: sriovnetworkv1.OVSInterfaceConfig{
+				Type:        iface.Type,
+				ExternalIDs: updateMap(knownConfigUplink.Interface.ExternalIDs, iface.ExternalIDs),
+				Options:     updateMap(knownConfigUplink.Interface.Options, iface.Options),
+				OtherConfig: updateMap(knownConfigUplink.Interface.OtherConfig, iface.OtherConfig),
+			},
+		}
+		if iface.MTURequest != nil {
+			mtu := *iface.MTURequest
+			uplinkConfig.Interface.MTURequest = &mtu
+		}
+		currentConfig.Uplinks = append(currentConfig.Uplinks, uplinkConfig)
 	}
 	return currentConfig, nil
 }
