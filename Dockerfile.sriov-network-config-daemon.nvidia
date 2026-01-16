@@ -41,6 +41,10 @@ RUN case ${TARGETARCH} in \
     cd /tmp/mft-${MFT_VERSION}-${ARCH}-deb && \
     ./install.sh --without-kernel
 
+
+# Delete the original mstconfig and mstfwreset binaries
+# We only need their dependent packages, not the binaries themselves.
+RUN rm -f /usr/bin/mstconfig /usr/bin/mstfwreset
 RUN ln -s $(which mlxconfig) /usr/bin/mstconfig
 RUN ln -s $(which mlxfwreset) /usr/bin/mstfwreset
 
