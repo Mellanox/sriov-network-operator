@@ -204,6 +204,29 @@ func GetEswitchModeFromStatus(ifaceStatus *InterfaceExt) string {
 	return ifaceStatus.EswitchMode
 }
 
+func NeedToUpdateDevlinkParams(desired *DevlinkParams, current *DevlinkParams) bool {
+	for _, dParam := range desired.Params {
+		found := false
+		for _, cParam := range current.Params {
+			if dParam.Name == cParam.Name {
+				found = true
+				if dParam.Value != cParam.Value {
+					log.V(0).Info("NeedToUpdateDevlinkParams(): DevlinkParam needs update",
+						"name", dParam.Name, "desired", dParam.Value, "current", cParam.Value)
+					return true
+				}
+				break
+			}
+		}
+		if !found {
+			log.V(0).Info("NeedToUpdateDevlinkParams(): DevlinkParam needs update - not found in status",
+				"name", dParam.Name, "desired", dParam.Value)
+			return true
+		}
+	}
+	return false
+}
+
 func NeedToUpdateSriov(ifaceSpec *Interface, ifaceStatus *InterfaceExt) bool {
 	if ifaceSpec.Mtu > 0 {
 		mtu := ifaceSpec.Mtu
@@ -282,6 +305,11 @@ func NeedToUpdateSriov(ifaceSpec *Interface, ifaceStatus *InterfaceExt) bool {
 			}
 		}
 	}
+
+	if NeedToUpdateDevlinkParams(&ifaceSpec.DevlinkParams, &ifaceStatus.DevlinkParams) {
+		return true
+	}
+
 	return false
 }
 
