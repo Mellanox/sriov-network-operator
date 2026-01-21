@@ -30,7 +30,7 @@ FROM ${BASE_IMAGE_DOCA_BASE_RT_HOST:-nvcr.io/nvidia/doca/doca:3.2.1-base-rt-host
 # xref pkg/vendors/mellanox/mellanox.go#L150
 # DOCA repositories have a GPG issue, so we need to allow insecure repositories.
 # GPG error: https://linux.mellanox.com/public/repo/doca/3.2.1/ubuntu22.04/x86_64 ./ Release: The following signatures couldn't be verified because the public key is not available: NO_PUBKEY A024F6F0E6D6A281
-RUN apt-get update -o Acquire::AllowInsecureRepositories=true || true && \
+RUN apt-get update -o Acquire::AllowInsecureRepositories=true && \
     apt-get install -y --allow-unauthenticated hwdata pciutils curl mstflint && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
