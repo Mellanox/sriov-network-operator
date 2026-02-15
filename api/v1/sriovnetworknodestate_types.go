@@ -33,14 +33,15 @@ type SriovNetworkNodeStateSpec struct {
 type Interfaces []Interface
 
 type Interface struct {
-	PciAddress        string    `json:"pciAddress"`
-	NumVfs            int       `json:"numVfs,omitempty"`
-	Mtu               int       `json:"mtu,omitempty"`
-	Name              string    `json:"name,omitempty"`
-	LinkType          string    `json:"linkType,omitempty"`
-	EswitchMode       string    `json:"eSwitchMode,omitempty"`
-	VfGroups          []VfGroup `json:"vfGroups,omitempty"`
-	ExternallyManaged bool      `json:"externallyManaged,omitempty"`
+	PciAddress        string        `json:"pciAddress"`
+	NumVfs            int           `json:"numVfs,omitempty"`
+	Mtu               int           `json:"mtu,omitempty"`
+	Name              string        `json:"name,omitempty"`
+	LinkType          string        `json:"linkType,omitempty"`
+	EswitchMode       string        `json:"eSwitchMode,omitempty"`
+	VfGroups          []VfGroup     `json:"vfGroups,omitempty"`
+	ExternallyManaged bool          `json:"externallyManaged,omitempty"`
+	DevlinkParams     DevlinkParams `json:"devlinkParams,omitempty"`
 }
 
 type VfGroup struct {
@@ -69,29 +70,35 @@ type InterfaceExt struct {
 	EswitchMode       string            `json:"eSwitchMode,omitempty"`
 	ExternallyManaged bool              `json:"externallyManaged,omitempty"`
 	TotalVfs          int               `json:"totalvfs,omitempty"`
+	DevlinkParams     DevlinkParams     `json:"devlinkParams,omitempty"`
 	VFs               []VirtualFunction `json:"Vfs,omitempty"`
 }
+
 type InterfaceExts []InterfaceExt
 
 type VirtualFunction struct {
-	Name            string `json:"name,omitempty"`
-	Mac             string `json:"mac,omitempty"`
-	Assigned        string `json:"assigned,omitempty"`
-	Driver          string `json:"driver,omitempty"`
-	PciAddress      string `json:"pciAddress"`
-	Vendor          string `json:"vendor,omitempty"`
-	DeviceID        string `json:"deviceID,omitempty"`
-	Vlan            int    `json:"Vlan,omitempty"`
-	Mtu             int    `json:"mtu,omitempty"`
-	VfID            int    `json:"vfID"`
-	VdpaType        string `json:"vdpaType,omitempty"`
-	RepresentorName string `json:"representorName,omitempty"`
-	GUID            string `json:"guid,omitempty"`
+	Name            string        `json:"name,omitempty"`
+	Mac             string        `json:"mac,omitempty"`
+	Assigned        string        `json:"assigned,omitempty"`
+	Driver          string        `json:"driver,omitempty"`
+	PciAddress      string        `json:"pciAddress"`
+	Vendor          string        `json:"vendor,omitempty"`
+	DeviceID        string        `json:"deviceID,omitempty"`
+	Vlan            int           `json:"Vlan,omitempty"`
+	Mtu             int           `json:"mtu,omitempty"`
+	VfID            int           `json:"vfID"`
+	VdpaType        string        `json:"vdpaType,omitempty"`
+	RepresentorName string        `json:"representorName,omitempty"`
+	GUID            string        `json:"guid,omitempty"`
+	DevlinkParams   DevlinkParams `json:"devlinkParams,omitempty"`
 }
 
 // Bridges contains list of bridges
 type Bridges struct {
-	OVS []OVSConfigExt `json:"ovs,omitempty"`
+	// contains OVS bridges grouping configuration
+	// +kubebuilder:validation:Enum=perPF;perNIC;all
+	GroupingPolicy string         `json:"groupingPolicy,omitempty"`
+	OVS            []OVSConfigExt `json:"ovs,omitempty"`
 }
 
 // OVSConfigExt contains configuration for the concrete OVS bridge
@@ -119,6 +126,9 @@ type System struct {
 	// +kubebuilder:validation:Enum=shared;exclusive
 	//RDMA subsystem. Allowed value "shared", "exclusive".
 	RdmaMode string `json:"rdmaMode,omitempty"`
+	// OVS config. It will be provided for ovs-vswitchd service as other_config option
+	// +kubebuilder:default:={hw-offload: "true"}
+	OvsConfig map[string]string `json:"ovsConfig,omitempty"`
 }
 
 // SriovNetworkNodeStateStatus defines the observed state of SriovNetworkNodeState

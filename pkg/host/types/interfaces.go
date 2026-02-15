@@ -96,6 +96,8 @@ type NetworkInterface interface {
 	// GetDevlinkDeviceParam returns devlink parameter for the device as a string, if the parameter has multiple values
 	// then the function will return only first one from the list.
 	GetDevlinkDeviceParam(pciAddr, paramName string) (string, error)
+	// GetDevlinkDeviceParams returns all configured devlink parameters
+	GetDevlinkDeviceParams(pciAddr string) ([]sriovnetworkv1.DevlinkParam, error)
 	// SetDevlinkDeviceParam set devlink parameter for the device, accepts paramName and value
 	// as a string. Automatically set CMODE for the parameter and converts the value to the right
 	// type before submitting it.
@@ -119,12 +121,16 @@ type ServiceInterface interface {
 	IsServiceEnabled(servicePath string) (bool, error)
 	// ReadService reads a systemd servers and return it as a struct
 	ReadService(servicePath string) (*Service, error)
-	// EnableService enables a systemd server on the host
+	// EnableService enables a systemd service on the host
 	EnableService(service *Service) error
+	// ReloadServiceDaemon reloads the systemd daemon on the host to pick up changes in services
+	ReloadServiceDaemon() error
+	// RestartService restarts a systemd service on the host
+	RestartService(service *Service) error
 	// ReadServiceManifestFile reads the systemd manifest for a specific service
 	ReadServiceManifestFile(path string) (*Service, error)
 	// ReadServiceInjectionManifestFile reads the injection manifest file for the systemd service
-	ReadServiceInjectionManifestFile(path string) (*Service, error)
+	ReadServiceInjectionManifestFile(path string, ovsConfig map[string]string) (*Service, error)
 	// CompareServices returns true if serviceA needs update(doesn't contain all fields from service B)
 	CompareServices(serviceA, serviceB *Service) (bool, error)
 	// UpdateSystemService updates a system service on the host
@@ -202,7 +208,9 @@ type VdpaInterface interface {
 type BridgeInterface interface {
 	// DiscoverBridges returns information about managed bridges on the host
 	DiscoverBridges() (sriovnetworkv1.Bridges, error)
-	// ConfigureBridge configure managed bridges for the host
+	// ConfigureBridges configure managed bridges for the host.
+	// When groupingPolicy is "all", the bridges spec will contain a single bridge
+	// with multiple uplinks (created by the controller in ApplyBridgeConfig).
 	ConfigureBridges(bridgesSpec sriovnetworkv1.Bridges, bridgesStatus sriovnetworkv1.Bridges) error
 	// DetachInterfaceFromManagedBridge detach interface from a managed bridge,
 	// this step is required before applying some configurations to PF, e.g. changing of eSwitch mode.
