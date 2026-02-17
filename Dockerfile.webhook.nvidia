@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-ARG BASE_IMAGE_GO_DISTROLESS_DEV
+ARG BASE_IMAGE_GO_DISTROLESS
 
 FROM golang:1.25 AS builder
 
@@ -25,7 +25,7 @@ WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
 COPY . .
 RUN make _build-webhook BIN_PATH=build/_output/cmd
 
-FROM ${BASE_IMAGE_GO_DISTROLESS_DEV:-nvcr.io/nvidia/distroless/go:v3.2.1-dev}
+FROM ${BASE_IMAGE_GO_DISTROLESS:-nvcr.io/nvidia/distroless/go:v4.0.1}
 USER 65532:65532
 LABEL io.k8s.display-name="sriov-network-webhook" \
       io.k8s.description="This is an admission controller webhook that mutates and validates customer resources of sriov network operator."
