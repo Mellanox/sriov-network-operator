@@ -13,9 +13,6 @@
 # limitations under the License.
 #
 # SPDX-License-Identifier: Apache-2.0
-
-ARG BASE_IMAGE_DOCA_BASE_RT_HOST
-
 FROM golang:1.25 AS builder
 
 ARG GOPROXY
@@ -25,7 +22,7 @@ WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
 COPY . .
 RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
 
-FROM ${BASE_IMAGE_DOCA_BASE_RT_HOST:-nvcr.io/nvidia/doca/doca:3.2.1-base-rt-host}
+FROM nvcr.io/nvidia/doca/doca:3.3.0-base-rt-host
 # We have to ensure that pciutils is installed. These packages are needed for mstfwreset to succeed.
 # xref pkg/vendors/mellanox/mellanox.go#L150
 # DOCA repositories have a GPG issue, so we need to allow insecure repositories.
