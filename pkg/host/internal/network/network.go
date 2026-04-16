@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
-	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -394,62 +393,43 @@ func (n *network) devlinkCmodeToString(c uint8) string {
 
 // GetDevlinkDeviceParams returns all configured devlink parameters
 func (n *network) GetDevlinkDeviceParams(pciAddr string) ([]sriovnetworkv1.DevlinkParam, error) {
-	params, err := n.netlinkLib.DevlinkGetDeviceParams(consts.BusPci, pciAddr)
+	// NLM_F_DUMP ignores bus/device — the kernel returns params for all devlink devices.
+	// Use the dump only to discover param names, then query each by name to get correct
+	// values for this specific device.
+	allParams, err := n.netlinkLib.DevlinkGetDeviceParams(consts.BusPci, pciAddr)
 	if err != nil {
 		log.Log.Error(err, "Failed to get devlink params", "device", pciAddr)
 		return nil, err
 	}
 
-	// Deduplicate params by name, keeping only first occurrence
 	seen := make(map[string]bool)
-	var pfParams []*netlink.DevlinkParam
-
-	for _, p := range params {
+	var names []string
+	for _, p := range allParams {
 		if !seen[p.Name] {
 			seen[p.Name] = true
-			pfParams = append(pfParams, p)
+			names = append(names, p.Name)
 		}
 	}
 
-	//  Merge all params by name
-	merged := make(map[string]map[uint8]interface{})
 	devlinkParams := make([]sriovnetworkv1.DevlinkParam, 0)
-
-	for _, p := range pfParams {
-		if _, ok := merged[p.Name]; !ok {
-			merged[p.Name] = make(map[uint8]interface{})
+	for _, name := range names {
+		p, err := n.netlinkLib.DevlinkGetDeviceParamByName(consts.BusPci, pciAddr, name)
+		if err != nil {
+			log.Log.Error(err, "Failed to get devlink param", "device", pciAddr, "param", name)
+			continue
 		}
 
 		for _, v := range p.Values {
-			// only CLI-visible cmodes
-			strVal, _ := n.devlinkValueToString(p.Type, v.Data)
 			switch v.CMODE {
 			case nl.DEVLINK_PARAM_CMODE_RUNTIME,
 				nl.DEVLINK_PARAM_CMODE_DRIVERINIT,
 				nl.DEVLINK_PARAM_CMODE_PERMANENT:
-				merged[p.Name][v.CMODE] = strVal
-			}
-		}
-	}
-
-	for name, cmodes := range merged {
-		for _, cm := range []uint8{
-			nl.DEVLINK_PARAM_CMODE_RUNTIME,
-			nl.DEVLINK_PARAM_CMODE_DRIVERINIT,
-			nl.DEVLINK_PARAM_CMODE_PERMANENT,
-		} {
-			if val, ok := cmodes[cm]; ok {
-				strVal := val.(string)
-				if err != nil {
-					log.Log.Error(err, "Failed to decode devlink param value", "device", pciAddr)
-					return nil, err
-				}
-				devlinkParam := sriovnetworkv1.DevlinkParam{
+				strVal, _ := n.devlinkValueToString(p.Type, v.Data)
+				devlinkParams = append(devlinkParams, sriovnetworkv1.DevlinkParam{
 					Name:  name,
-					Cmode: n.devlinkCmodeToString(cm),
+					Cmode: n.devlinkCmodeToString(v.CMODE),
 					Value: strVal,
-				}
-				devlinkParams = append(devlinkParams, devlinkParam)
+				})
 			}
 		}
 	}
