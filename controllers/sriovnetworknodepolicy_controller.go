@@ -761,6 +761,10 @@ func (r *SriovNetworkNodePolicyReconciler) syncDeviceAttributes(ctx context.Cont
 	attrList := &sriovdrav1alpha1.DeviceAttributesList{}
 	if err := r.List(ctx, attrList, client.InNamespace(vars.Namespace),
 		client.MatchingLabels{deviceClassGeneratedByLabel: deviceClassOperatorLabelVal}); err != nil {
+		if apimeta.IsNoMatchError(err) {
+			logger.V(1).Info("DeviceAttributes CRD not available, skipping sync")
+			return nil
+		}
 		logger.Error(err, "Failed to list DeviceAttributes CRs")
 		return err
 	}
@@ -863,6 +867,10 @@ func (r *SriovNetworkNodePolicyReconciler) syncSriovResourcePolicies(ctx context
 	policyList := &sriovdrav1alpha1.SriovResourcePolicyList{}
 	if err := r.List(ctx, policyList, client.InNamespace(vars.Namespace),
 		client.MatchingLabels{deviceClassGeneratedByLabel: deviceClassOperatorLabelVal}); err != nil {
+		if apimeta.IsNoMatchError(err) {
+			logger.V(1).Info("SriovResourcePolicy CRD not available, skipping sync")
+			return nil
+		}
 		logger.Error(err, "Failed to list SriovResourcePolicy CRs")
 		return err
 	}
@@ -1201,20 +1209,30 @@ func (r *SriovNetworkNodePolicyReconciler) cleanupSriovResourcePoliciesAndDevice
 	}
 	policyList := &sriovdrav1alpha1.SriovResourcePolicyList{}
 	if err := r.List(ctx, policyList, listOpts...); err != nil {
-		return err
-	}
-	for i := range policyList.Items {
-		if err := r.Delete(ctx, &policyList.Items[i]); err != nil && !errors.IsNotFound(err) {
+		if apimeta.IsNoMatchError(err) {
+			logger.V(1).Info("SriovResourcePolicy CRD not available, nothing to clean up")
+		} else {
 			return err
+		}
+	} else {
+		for i := range policyList.Items {
+			if err := r.Delete(ctx, &policyList.Items[i]); err != nil && !errors.IsNotFound(err) {
+				return err
+			}
 		}
 	}
 	attrList := &sriovdrav1alpha1.DeviceAttributesList{}
 	if err := r.List(ctx, attrList, listOpts...); err != nil {
-		return err
-	}
-	for i := range attrList.Items {
-		if err := r.Delete(ctx, &attrList.Items[i]); err != nil && !errors.IsNotFound(err) {
+		if apimeta.IsNoMatchError(err) {
+			logger.V(1).Info("DeviceAttributes CRD not available, nothing to clean up")
+		} else {
 			return err
+		}
+	} else {
+		for i := range attrList.Items {
+			if err := r.Delete(ctx, &attrList.Items[i]); err != nil && !errors.IsNotFound(err) {
+				return err
+			}
 		}
 	}
 	return nil

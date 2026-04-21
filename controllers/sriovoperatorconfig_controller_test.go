@@ -281,7 +281,9 @@ var _ = Describe("SriovOperatorConfig controller", Ordered, func() {
 		It("should delete the webhooks when SriovOperatorConfig/default is deleted", func() {
 			DeferCleanup(k8sClient.Create, context.Background(), makeDefaultSriovOpConfig())
 
-			err := k8sClient.Delete(context.Background(), &sriovnetworkv1.SriovOperatorConfig{})
+			err := k8sClient.Delete(context.Background(), &sriovnetworkv1.SriovOperatorConfig{
+				ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: consts.DefaultConfigName},
+			})
 			Expect(err).NotTo(HaveOccurred())
 
 			assertResourceDoesNotExist(
@@ -310,7 +312,9 @@ var _ = Describe("SriovOperatorConfig controller", Ordered, func() {
 				return config.Finalizers
 			}, util.APITimeout, util.RetryInterval).Should(Equal([]string{sriovnetworkv1.OPERATORCONFIGFINALIZERNAME}))
 
-			err := k8sClient.Delete(context.Background(), &sriovnetworkv1.SriovOperatorConfig{})
+			err := k8sClient.Delete(context.Background(), &sriovnetworkv1.SriovOperatorConfig{
+				ObjectMeta: metav1.ObjectMeta{Namespace: testNamespace, Name: consts.DefaultConfigName},
+			})
 			Expect(err).NotTo(HaveOccurred())
 
 			// verify that finalizer has been removed
