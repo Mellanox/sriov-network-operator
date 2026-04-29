@@ -95,6 +95,7 @@ spec:
             - --ovs-bin-file=/ovs
             - --ovs-mirror-producer-bin-file=/ovs-mirror-producer
             - --ovs-mirror-consumer-bin-file=/ovs-mirror-consumer
+            - --no-sleep
           securityContext:
             privileged: true
           resources:
