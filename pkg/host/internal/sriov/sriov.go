@@ -502,6 +502,11 @@ func (s *sriov) applyDevlinkParams(interfaces []interfaceToConfigure) error {
 			continue
 		}
 		for _, param := range iface.DevlinkParams.Params {
+			// flow_steering_mode is applied earlier in configureHWOptionsForSwitchdev,
+			// where the device can be temporarily flipped to legacy eswitch mode if required.
+			if param.Name == consts.DevlinkParamFlowSteeringMode {
+				continue
+			}
 			var err error
 			switch param.ApplyOn {
 			case consts.DevlinkParamApplyOnPf:
@@ -534,8 +539,19 @@ func (s *sriov) configureHWOptionsForSwitchdev(iface *sriovnetworkv1.Interface) 
 	if err := s.networkHelper.EnableHwTcOffload(iface.Name); err != nil {
 		return err
 	}
-	desiredFlowSteeringMode := "smfs"
-	currentFlowSteeringMode, err := s.networkHelper.GetDevlinkDeviceParam(iface.PciAddress, "flow_steering_mode")
+	// Default to smfs unless the user explicitly requests a different mode via devlink params.
+	// flow_steering_mode is special: it must be applied while the device is in legacy eswitch mode,
+	// so we handle it here (not in applyDevlinkParams). applyDevlinkParams skips it accordingly.
+	desiredFlowSteeringMode := consts.FlowSteeringModeSmfs
+	for _, p := range iface.DevlinkParams.Params {
+		if p.ApplyOn == consts.DevlinkParamApplyOnPf &&
+			p.Name == consts.DevlinkParamFlowSteeringMode &&
+			p.Value != "" {
+			desiredFlowSteeringMode = p.Value
+			break
+		}
+	}
+	currentFlowSteeringMode, err := s.networkHelper.GetDevlinkDeviceParam(iface.PciAddress, consts.DevlinkParamFlowSteeringMode)
 	if err != nil {
 		if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENODEV) {
 			log.Log.V(2).Info("configureHWOptionsForSwitchdev(): device has no flow_steering_mode parameter, skip",
@@ -561,7 +577,7 @@ func (s *sriov) configureHWOptionsForSwitchdev(iface *sriovnetworkv1.Interface) 
 			return err
 		}
 	}
-	if err := s.networkHelper.SetDevlinkDeviceParam(iface.PciAddress, "flow_steering_mode", desiredFlowSteeringMode); err != nil {
+	if err := s.networkHelper.SetDevlinkDeviceParam(iface.PciAddress, consts.DevlinkParamFlowSteeringMode, desiredFlowSteeringMode); err != nil {
 		if errors.Is(err, syscall.ENOTSUP) {
 			log.Log.V(2).Info("configureHWOptionsForSwitchdev(): device doesn't support changing of flow_steering_mode, skip", "device", iface.PciAddress)
 			return nil
