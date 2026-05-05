@@ -26,6 +26,11 @@ COPY . .
 RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
 
 FROM ${BASE_IMAGE_DOCA_FULL_RT_HOST:-nvcr.io/nvidia/doca/doca:3.2.1-full-rt-host}
+
+# Drop NVIDIA-internal apt sources baked into staging DOCA base images so the
+# build works from public CI (GitHub Actions). mstflint then resolves from Ubuntu.
+RUN grep -rlE 'doca-repo-prod\.nvidia\.com' /etc/apt/ 2>/dev/null | xargs -r rm -f
+
 # We have to ensure that pciutils is installed. These packages are needed for mstfwreset to succeed.
 # xref pkg/vendors/mellanox/mellanox.go#L150
 # DOCA repositories have a GPG issue, so we need to allow insecure repositories.
