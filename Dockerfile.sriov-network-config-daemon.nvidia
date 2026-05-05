@@ -14,7 +14,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-ARG BASE_IMAGE_DOCA_BASE_RT_HOST
+ARG BASE_IMAGE_DOCA_FULL_RT_HOST
 
 FROM golang:1.25 AS builder
 
@@ -25,7 +25,7 @@ WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
 COPY . .
 RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
 
-FROM ${BASE_IMAGE_DOCA_BASE_RT_HOST:-nvcr.io/nvidia/doca/doca:3.2.1-base-rt-host}
+FROM ${BASE_IMAGE_DOCA_FULL_RT_HOST:-nvcr.io/nvidia/doca/doca:3.2.1-full-rt-host}
 # We have to ensure that pciutils is installed. These packages are needed for mstfwreset to succeed.
 # xref pkg/vendors/mellanox/mellanox.go#L150
 # DOCA repositories have a GPG issue, so we need to allow insecure repositories.
@@ -33,18 +33,6 @@ FROM ${BASE_IMAGE_DOCA_BASE_RT_HOST:-nvcr.io/nvidia/doca/doca:3.2.1-base-rt-host
 RUN apt-get update -o Acquire::AllowInsecureRepositories=true && \
     apt-get install -y --allow-unauthenticated hwdata pciutils curl mstflint kmod && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
-
-ARG TARGETARCH
-ENV MFT_VERSION=4.33.0-169
-RUN case ${TARGETARCH} in \
-        amd64) ARCH=x86_64 ;; \
-        arm64) ARCH=arm64 ;; \
-        *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
-    esac && \
-    curl -fsSL https://www.mellanox.com/downloads/MFT/mft-${MFT_VERSION}-${ARCH}-deb.tgz | tar -xz --no-same-owner -C /tmp && \
-    cd /tmp/mft-${MFT_VERSION}-${ARCH}-deb && \
-    ./install.sh --without-kernel
-
 
 # Delete the original mstconfig and mstfwreset binaries
 # We only need their dependent packages, not the binaries themselves.
