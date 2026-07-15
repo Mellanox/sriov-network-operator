@@ -7,7 +7,7 @@ on:
 
 jobs:
   call-reusable-sync-fork-workflow:
-    uses: Mellanox/cloud-orchestration-reusable-workflows/.github/workflows/fork-sync-reusable.yml@main
+    uses: Mellanox/cloud-orchestration-reusable-workflows/.github/workflows/fork-sync-reusable.yml@network-operator-26.1.x
     with:
       upstream-owner: k8snetworkplumbingwg
       default-branch: master
