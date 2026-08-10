@@ -34,7 +34,7 @@ func main() {
 	deviceStatus := v1alpha1.NicDeviceStatus{
 		SerialNumber: targetSerial,
 		Ports: []v1alpha1.NicDevicePortSpec{
-			{PCI: targetPCI, NetworkInterface: "eth0"},
+			{PCI: targetPCI, NetworkInterface: "enp59s0f0np0"},
 		},
 	}
 
