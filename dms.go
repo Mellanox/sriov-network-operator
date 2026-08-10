@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/Mellanox/nic-configuration-operator/api/v1alpha1"
 	"github.com/Mellanox/nic-configuration-operator/pkg/consts"
@@ -47,4 +50,12 @@ func main() {
 	}
 
 	fmt.Printf("NIC %s  %s = %s\n", targetPCI, consts.SriovNumOfVfsParam, vals[0])
+
+	// MTU is not an mlxconfig/DMS parameter; read it from sysfs.
+	iface := deviceStatus.Ports[0].NetworkInterface
+	mtuRaw, err := os.ReadFile(filepath.Join("/sys/class/net", iface, "mtu"))
+	if err != nil {
+		log.Fatalf("read MTU for %s: %v", iface, err)
+	}
+	fmt.Printf("NIC %s  MTU = %s\n", targetPCI, strings.TrimSpace(string(mtuRaw)))
 }
