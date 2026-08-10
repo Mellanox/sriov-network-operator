@@ -19,6 +19,15 @@ const (
 	targetPCI    = "0000:3b:00.0"
 )
 
+// mlxParams are the four NV config parameters the mellanox plugin reads and
+// may modify: total VF count, SR-IOV enable, and per-port link type.
+var mlxParams = []string{
+	consts.SriovNumOfVfsParam, // NUM_OF_VFS
+	consts.SriovEnabledParam,  // SRIOV_EN
+	consts.LinkTypeP1Param,    // LINK_TYPE_P1
+	consts.LinkTypeP2Param,    // LINK_TYPE_P2
+}
+
 func main() {
 	ctx := context.Background()
 
@@ -36,20 +45,21 @@ func main() {
 	}
 	defer dmsMgr.StopAllDMSInstances()
 
-	// NUM_OF_VFS is an NV config (mlxconfig) parameter, not a DMS gNMI path.
-	// Query it via NVConfigUtils; pass consts.SriovNumOfVfsParam to fetch only that param.
+	// Query all NV config in one mlxconfig call (empty additionalParameter = full dump).
 	nvUtils := nvconfig.NewNVConfigUtils()
-	query, err := nvUtils.QueryNvConfig(ctx, targetPCI, consts.SriovNumOfVfsParam)
+	query, err := nvUtils.QueryNvConfig(ctx, targetPCI, "")
 	if err != nil {
 		log.Fatalf("QueryNvConfig: %v", err)
 	}
 
-	vals, ok := query.CurrentConfig[consts.SriovNumOfVfsParam]
-	if !ok || len(vals) == 0 {
-		log.Fatalf("%s not found in current config", consts.SriovNumOfVfsParam)
+	for _, param := range mlxParams {
+		vals, ok := query.CurrentConfig[param]
+		if !ok || len(vals) == 0 {
+			fmt.Printf("NIC %s  %s = <not found>\n", targetPCI, param)
+			continue
+		}
+		fmt.Printf("NIC %s  %s = %s\n", targetPCI, param, vals[0])
 	}
-
-	fmt.Printf("NIC %s  %s = %s\n", targetPCI, consts.SriovNumOfVfsParam, vals[0])
 
 	// MTU is not an mlxconfig/DMS parameter; read it from sysfs.
 	iface := deviceStatus.Ports[0].NetworkInterface
