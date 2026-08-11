@@ -26,15 +26,23 @@ const (
 	lagResourceAllocation = "LAG_RESOURCE_ALLOCATION"
 )
 
+// nvConfigParams are the NV config parameters queried and applied by this package.
+var nvConfigParams = []string{
+	nicconsts.SriovNumOfVfsParam,
+	nicconsts.SriovEnabledParam,
+	nicconsts.LinkTypeP1Param,
+	nicconsts.LinkTypeP2Param,
+	lagResourceAllocation,
+}
+
 //go:generate ../../../../bin/mockgen -destination mock/mock_nvidia.go -source dms.go
 type NvidiaInterface interface {
-	// StartNicManagement starts a local DMS instance for each supplied Nvidia interface.
+	// StartNicManagement starts a local DMS server for the supplied Nvidia interfaces.
 	StartNicManagement(ifaces []sriovnetworkv1.InterfaceExt) error
-	// StopNicManagement stops all running DMS instances.
+	// StopNicManagement stops the running DMS server.
 	StopNicManagement() error
 	// GetNicFwData returns the current and next-boot NV config for a NIC as
 	// MlxNic structs, for direct use with the mlx.Handle* family of functions.
-	// Data is read via nvconfig (mlxconfig query).
 	GetNicFwData(ctx context.Context, pciAddr string) (current, nextBoot *mlx.MlxNic, err error)
 	// ApplyNicFwChanges writes the desired NV config changes to the NIC via nvconfig.
 	ApplyNicFwChanges(ctx context.Context, pciAddr string, changes mlx.MlxNic) error
@@ -45,37 +53,38 @@ type NvidiaInterface interface {
 }
 
 type nvidiaHelper struct {
-	dmsMgr  dms.DMSManager
-	nvUtils nvconfig.NVConfigUtils
+	dmsServer dms.DMSServer
+	nvUtils   nvconfig.NVConfigUtils
 }
 
 func New() NvidiaInterface {
 	return &nvidiaHelper{
-		dmsMgr:  dms.NewDMSManager(),
-		nvUtils: nvconfig.NewNVConfigUtils(),
+		dmsServer: dms.NewDMSServer(),
+		nvUtils:   nvconfig.NewNVConfigUtils(),
 	}
 }
 
 func (h *nvidiaHelper) StartNicManagement(ifaces []sriovnetworkv1.InterfaceExt) error {
 	log.Log.V(2).Info("nvidia StartNicManagement", "deviceCount", len(ifaces))
-	devices := make([]nicv1alpha1.NicDeviceStatus, 0, len(ifaces))
+	devices := make([]nicv1alpha1.NicDevice, 0, len(ifaces))
 	for _, iface := range ifaces {
-		devices = append(devices, nicDeviceStatusFromIface(iface))
+		devices = append(devices, nicDeviceFromIface(iface))
 	}
-	return h.dmsMgr.StartDMSInstances(devices)
+	return h.dmsServer.StartDMSServer(devices)
 }
 
 func (h *nvidiaHelper) StopNicManagement() error {
 	log.Log.V(2).Info("nvidia StopNicManagement")
-	return h.dmsMgr.StopAllDMSInstances()
+	return h.dmsServer.StopDMSServer()
 }
 
-// GetNicFwData queries all NV config in one mlxconfig call and returns the
+// GetNicFwData queries the NV config params used by the plugin and returns
 // current and next-boot state as MlxNic structs.
 func (h *nvidiaHelper) GetNicFwData(ctx context.Context, pciAddr string) (current, nextBoot *mlx.MlxNic, err error) {
 	log.Log.V(2).Info("nvidia GetNicFwData", "pciAddr", pciAddr)
 
-	query, err := h.nvUtils.QueryNvConfig(ctx, pciAddr, "")
+	port := nicv1alpha1.NicDevicePortSpec{PCI: pciAddr}
+	query, err := h.nvUtils.QueryNvConfig(ctx, port, nvConfigParams)
 	if err != nil {
 		return nil, nil, fmt.Errorf("QueryNvConfig for %s: %w", pciAddr, err)
 	}
@@ -92,41 +101,43 @@ func (h *nvidiaHelper) GetNicFwData(ctx context.Context, pciAddr string) (curren
 }
 
 // ApplyNicFwChanges applies only the fields that differ from sentinel values
-// (TotalVfs == -1 means skip, empty string means skip) via individual
-// SetNvConfigParameter calls.
+// (TotalVfs == -1 means skip, empty string means skip) via SetNvConfigParameter.
 func (h *nvidiaHelper) ApplyNicFwChanges(ctx context.Context, pciAddr string, changes mlx.MlxNic) error {
 	log.Log.V(2).Info("nvidia ApplyNicFwChanges", "pciAddr", pciAddr)
+	_ = ctx
+
+	port := nicv1alpha1.NicDevicePortSpec{PCI: pciAddr}
 
 	if changes.EnableSriov {
-		if err := h.nvUtils.SetNvConfigParameter(pciAddr, nicconsts.SriovEnabledParam, "True"); err != nil {
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovEnabledParam, "True"); err != nil {
 			return fmt.Errorf("set %s: %w", nicconsts.SriovEnabledParam, err)
 		}
 	} else if changes.TotalVfs == 0 {
-		if err := h.nvUtils.SetNvConfigParameter(pciAddr, nicconsts.SriovEnabledParam, "False"); err != nil {
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovEnabledParam, "False"); err != nil {
 			return fmt.Errorf("set %s: %w", nicconsts.SriovEnabledParam, err)
 		}
 	}
 
 	if changes.TotalVfs > -1 {
-		if err := h.nvUtils.SetNvConfigParameter(pciAddr, nicconsts.SriovNumOfVfsParam, strconv.Itoa(changes.TotalVfs)); err != nil {
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovNumOfVfsParam, strconv.Itoa(changes.TotalVfs)); err != nil {
 			return fmt.Errorf("set %s: %w", nicconsts.SriovNumOfVfsParam, err)
 		}
 	}
 
 	if changes.LinkTypeP1 != "" {
-		if err := h.nvUtils.SetNvConfigParameter(pciAddr, nicconsts.LinkTypeP1Param, changes.LinkTypeP1); err != nil {
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.LinkTypeP1Param, changes.LinkTypeP1); err != nil {
 			return fmt.Errorf("set %s: %w", nicconsts.LinkTypeP1Param, err)
 		}
 	}
 
 	if changes.LinkTypeP2 != "" {
-		if err := h.nvUtils.SetNvConfigParameter(pciAddr, nicconsts.LinkTypeP2Param, changes.LinkTypeP2); err != nil {
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.LinkTypeP2Param, changes.LinkTypeP2); err != nil {
 			return fmt.Errorf("set %s: %w", nicconsts.LinkTypeP2Param, err)
 		}
 	}
 
 	if changes.Multiport != -1 {
-		if err := h.nvUtils.SetNvConfigParameter(pciAddr, lagResourceAllocation, strconv.Itoa(changes.Multiport)); err != nil {
+		if err := h.nvUtils.SetNvConfigParameter(port, lagResourceAllocation, strconv.Itoa(changes.Multiport)); err != nil {
 			return fmt.Errorf("set %s: %w", lagResourceAllocation, err)
 		}
 	}
@@ -137,7 +148,7 @@ func (h *nvidiaHelper) ApplyNicFwChanges(ctx context.Context, pciAddr string, ch
 // ResetNicFirmware resets all NV config parameters to factory defaults.
 func (h *nvidiaHelper) ResetNicFirmware(pciAddr string) error {
 	log.Log.V(2).Info("nvidia ResetNicFirmware", "pciAddr", pciAddr)
-	return h.nvUtils.ResetNvConfig(pciAddr)
+	return h.nvUtils.ResetNvConfig(nicv1alpha1.NicDevicePortSpec{PCI: pciAddr})
 }
 
 // GetMTU reads the interface MTU from /sys/class/net/<iface>/mtu.
@@ -205,16 +216,15 @@ func parseLinkType(val string) string {
 	return mlx.PreconfiguredLinkType
 }
 
-// nicDeviceStatusFromIface builds a NicDeviceStatus for the DMS manager.
-// PCI address doubles as the serial-number key because SriovNetworkNodeState
-// does not expose NIC serial numbers.
-func nicDeviceStatusFromIface(iface sriovnetworkv1.InterfaceExt) nicv1alpha1.NicDeviceStatus {
-	return nicv1alpha1.NicDeviceStatus{
-		SerialNumber: iface.PciAddress,
-		Ports: []nicv1alpha1.NicDevicePortSpec{
-			{
-				PCI:              iface.PciAddress,
-				NetworkInterface: iface.Name,
+// nicDeviceFromIface builds a NicDevice for the DMS server from an InterfaceExt.
+func nicDeviceFromIface(iface sriovnetworkv1.InterfaceExt) nicv1alpha1.NicDevice {
+	return nicv1alpha1.NicDevice{
+		Status: nicv1alpha1.NicDeviceStatus{
+			Ports: []nicv1alpha1.NicDevicePortSpec{
+				{
+					PCI:              iface.PciAddress,
+					NetworkInterface: iface.Name,
+				},
 			},
 		},
 	}
