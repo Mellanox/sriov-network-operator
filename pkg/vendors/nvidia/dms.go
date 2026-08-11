@@ -12,8 +12,6 @@ import (
 	nicconsts "github.com/Mellanox/nic-configuration-operator/pkg/consts"
 	"github.com/Mellanox/nic-configuration-operator/pkg/dms"
 	"github.com/Mellanox/nic-configuration-operator/pkg/nvconfig"
-	nnictypes "github.com/Mellanox/nic-configuration-operator/pkg/types"
-	nicutils "github.com/Mellanox/nic-configuration-operator/pkg/utils"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	sriovnetworkv1 "github.com/k8snetworkplumbingwg/sriov-network-operator/api/v1"
@@ -26,14 +24,17 @@ const (
 	// lagResourceAllocation is the mlxconfig parameter controlling SR-IOV
 	// multiport (LAG) resource allocation; not yet in nic-configuration-operator consts.
 	lagResourceAllocation = "LAG_RESOURCE_ALLOCATION"
-
-	// DMS gNMI paths for the NV config parameters managed by this plugin.
-	dmsPathNumVfs           = "/nvidia/sriov/config/num-vfs"
-	dmsPathSriovEnable      = "/nvidia/sriov/config/enable"
-	dmsPathLinkTypeP1       = "/nvidia/port-config/p1/link-type"
-	dmsPathLinkTypeP2       = "/nvidia/port-config/p2/link-type"
-	dmsPathLagResourceAlloc = "/nvidia/lag/config/resource-allocation"
 )
+
+// nvConfigParams are the NV config parameters queried by GetNicFwData.
+// These are firmware-level parameters not exposed via DMS gNMI paths.
+var nvConfigParams = []string{
+	nicconsts.SriovNumOfVfsParam,
+	nicconsts.SriovEnabledParam,
+	nicconsts.LinkTypeP1Param,
+	nicconsts.LinkTypeP2Param,
+	lagResourceAllocation,
+}
 
 //go:generate ../../../../bin/mockgen -destination mock/mock_nvidia.go -source dms.go
 type NvidiaInterface interface {
@@ -94,101 +95,73 @@ func (h *nvidiaHelper) StopNicManagement() error {
 	return h.dmsServer.StopDMSServer()
 }
 
-// dmsNvConfigParams is the set of ConfigurationParameter descriptors sent to
-// DMSClient.GetParameters. Each DMSPath must match what dmsd exposes.
-var dmsNvConfigParams = []nnictypes.ConfigurationParameter{
-	{Name: nicconsts.SriovNumOfVfsParam, DMSPath: dmsPathNumVfs},
-	{Name: nicconsts.SriovEnabledParam, DMSPath: dmsPathSriovEnable},
-	{Name: nicconsts.LinkTypeP1Param, DMSPath: dmsPathLinkTypeP1},
-	{Name: nicconsts.LinkTypeP2Param, DMSPath: dmsPathLinkTypeP2},
-	{Name: lagResourceAllocation, DMSPath: dmsPathLagResourceAlloc},
-}
-
-// GetNicFwData queries NV config params via DMS and returns the current device
-// state as MlxNic structs compatible with the mlx.Handle* family.
-// DMS exposes live (current) state only; nextBoot is set to the same values
-// because dmsd has no next-boot concept for NV config parameters.
+// GetNicFwData queries NV config params via mlxconfig and returns current and
+// next-boot state as MlxNic structs compatible with the mlx.Handle* family.
+// These parameters are firmware-level and are not exposed via DMS gNMI paths.
 func (h *nvidiaHelper) GetNicFwData(ctx context.Context, pciAddr string) (current, nextBoot *mlx.MlxNic, err error) {
-	_ = ctx
 	log.Log.V(2).Info("nvidia GetNicFwData", "pciAddr", pciAddr)
 
-	client, err := h.dmsServer.GetDMSClientByPCIAddress(nicutils.PCIDeviceAddress(pciAddr))
+	port := nicv1alpha1.NicDevicePortSpec{PCI: pciAddr}
+	query, err := h.nvUtils.QueryNvConfig(ctx, port, nvConfigParams)
 	if err != nil {
-		return nil, nil, fmt.Errorf("GetDMSClientByPCIAddress for %s: %w", pciAddr, err)
+		return nil, nil, fmt.Errorf("QueryNvConfig for %s: %w", pciAddr, err)
 	}
 
-	values, err := client.GetParameters(dmsNvConfigParams)
+	current, err = mlxNicFromConfig(query.CurrentConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("GetParameters for %s: %w", pciAddr, err)
+		return nil, nil, fmt.Errorf("parsing current config for %s: %w", pciAddr, err)
 	}
-
-	current, err = mlxNicFromDMSValues(values)
+	nextBoot, err = mlxNicFromConfig(query.NextBootConfig)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parsing DMS values for %s: %w", pciAddr, err)
+		return nil, nil, fmt.Errorf("parsing next boot config for %s: %w", pciAddr, err)
 	}
-	// DMS returns live state; use it as next-boot too so that mlx.Handle*
-	// functions see a consistent view and still detect firmware-level changes.
-	nextBoot = current
 	return current, nextBoot, nil
 }
 
 // ApplyNicFwChanges applies only the fields that differ from sentinel values
-// (TotalVfs == -1 means skip, empty string means skip) via DMSClient.SetParameters.
+// (TotalVfs == -1 means skip, empty string means skip) via nvconfig (mlxconfig set).
+// These are firmware-level parameters and are not settable via DMS gNMI paths.
 func (h *nvidiaHelper) ApplyNicFwChanges(ctx context.Context, pciAddr string, changes mlx.MlxNic) error {
 	_ = ctx
 	log.Log.V(2).Info("nvidia ApplyNicFwChanges", "pciAddr", pciAddr)
 
-	var params []nnictypes.ConfigurationParameter
+	port := nicv1alpha1.NicDevicePortSpec{PCI: pciAddr}
 
 	if changes.EnableSriov {
-		params = append(params, nnictypes.ConfigurationParameter{
-			Name: nicconsts.SriovEnabledParam, DMSPath: dmsPathSriovEnable,
-			Value: "true", ValueType: "bool",
-		})
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovEnabledParam, "True"); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.SriovEnabledParam, err)
+		}
 	} else if changes.TotalVfs == 0 {
-		params = append(params, nnictypes.ConfigurationParameter{
-			Name: nicconsts.SriovEnabledParam, DMSPath: dmsPathSriovEnable,
-			Value: "false", ValueType: "bool",
-		})
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovEnabledParam, "False"); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.SriovEnabledParam, err)
+		}
 	}
 
 	if changes.TotalVfs > -1 {
-		params = append(params, nnictypes.ConfigurationParameter{
-			Name: nicconsts.SriovNumOfVfsParam, DMSPath: dmsPathNumVfs,
-			Value: strconv.Itoa(changes.TotalVfs), ValueType: "uint",
-		})
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovNumOfVfsParam, strconv.Itoa(changes.TotalVfs)); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.SriovNumOfVfsParam, err)
+		}
 	}
 
 	if changes.LinkTypeP1 != "" {
-		params = append(params, nnictypes.ConfigurationParameter{
-			Name: nicconsts.LinkTypeP1Param, DMSPath: dmsPathLinkTypeP1,
-			Value: changes.LinkTypeP1, ValueType: "string",
-		})
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.LinkTypeP1Param, changes.LinkTypeP1); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.LinkTypeP1Param, err)
+		}
 	}
 
 	if changes.LinkTypeP2 != "" {
-		params = append(params, nnictypes.ConfigurationParameter{
-			Name: nicconsts.LinkTypeP2Param, DMSPath: dmsPathLinkTypeP2,
-			Value: changes.LinkTypeP2, ValueType: "string",
-		})
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.LinkTypeP2Param, changes.LinkTypeP2); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.LinkTypeP2Param, err)
+		}
 	}
 
 	if changes.Multiport != -1 {
-		params = append(params, nnictypes.ConfigurationParameter{
-			Name: lagResourceAllocation, DMSPath: dmsPathLagResourceAlloc,
-			Value: strconv.Itoa(changes.Multiport), ValueType: "uint",
-		})
+		if err := h.nvUtils.SetNvConfigParameter(port, lagResourceAllocation, strconv.Itoa(changes.Multiport)); err != nil {
+			return fmt.Errorf("set %s: %w", lagResourceAllocation, err)
+		}
 	}
 
-	if len(params) == 0 {
-		return nil
-	}
-
-	client, err := h.dmsServer.GetDMSClientByPCIAddress(nicutils.PCIDeviceAddress(pciAddr))
-	if err != nil {
-		return fmt.Errorf("GetDMSClientByPCIAddress for %s: %w", pciAddr, err)
-	}
-	return client.SetParameters(params)
+	return nil
 }
 
 // ResetNicFirmware resets all NV config parameters to factory defaults.
@@ -210,36 +183,37 @@ func (h *nvidiaHelper) GetMTU(iface string) (int, error) {
 	return mtu, nil
 }
 
-// mlxNicFromDMSValues converts the map[DMSPath]value returned by
-// DMSClient.GetParameters into an MlxNic struct.
-func mlxNicFromDMSValues(values map[string]string) (*mlx.MlxNic, error) {
+// mlxNicFromConfig converts an NvConfigQuery config map (CurrentConfig or
+// NextBootConfig) into an MlxNic struct compatible with the mlx.Handle* family.
+func mlxNicFromConfig(config map[string][]string) (*mlx.MlxNic, error) {
 	nic := &mlx.MlxNic{TotalVfs: 0, Multiport: -1}
 
-	if v, ok := values[dmsPathNumVfs]; ok && v != "" {
-		n, err := strconv.Atoi(v)
+	if vals := config[nicconsts.SriovNumOfVfsParam]; len(vals) > 0 {
+		v, err := strconv.Atoi(vals[0])
 		if err != nil {
-			return nil, fmt.Errorf("parse %s %q: %w", dmsPathNumVfs, v, err)
+			return nil, fmt.Errorf("parse %s %q: %w", nicconsts.SriovNumOfVfsParam, vals[0], err)
 		}
-		nic.TotalVfs = n
+		nic.TotalVfs = v
 	}
 
-	if v, ok := values[dmsPathSriovEnable]; ok {
-		nic.EnableSriov = strings.EqualFold(v, "true") || v == "1"
+	if vals := config[nicconsts.SriovEnabledParam]; len(vals) > 0 {
+		nic.EnableSriov = strings.EqualFold(vals[0], "true") || vals[0] == "1"
 	}
 
-	if v, ok := values[dmsPathLinkTypeP1]; ok {
-		nic.LinkTypeP1 = parseLinkType(v)
+	if vals := config[nicconsts.LinkTypeP1Param]; len(vals) > 0 {
+		nic.LinkTypeP1 = parseLinkType(vals[0])
 	}
 
-	if v, ok := values[dmsPathLinkTypeP2]; ok {
-		nic.LinkTypeP2 = parseLinkType(v)
+	if vals := config[nicconsts.LinkTypeP2Param]; len(vals) > 0 {
+		nic.LinkTypeP2 = parseLinkType(vals[0])
 	}
 
 	// LAG_RESOURCE_ALLOCATION may be absent on NICs that don't support it.
-	if v, ok := values[dmsPathLagResourceAlloc]; ok {
-		if strings.Contains(v, "1") {
+	if vals := config[lagResourceAllocation]; len(vals) > 0 {
+		joined := strings.Join(vals, "")
+		if strings.Contains(joined, "1") {
 			nic.Multiport = 1
-		} else if strings.Contains(v, "0") {
+		} else if strings.Contains(joined, "0") {
 			nic.Multiport = 0
 		}
 	}
