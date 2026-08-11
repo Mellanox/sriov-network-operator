@@ -140,42 +140,48 @@ func (h *nvidiaHelper) GetNicFwData(ctx context.Context, pciAddr string) (curren
 }
 
 // ApplyNicFwChanges applies only the fields that differ from sentinel values
-// (TotalVfs == -1 means skip, empty string means skip) via a single
-// dmsc mlxconfig set call through nvUtils.SetNvConfigParametersBatch.
+// (TotalVfs == -1 means skip, empty string means skip) via mlxconfig set.
 func (h *nvidiaHelper) ApplyNicFwChanges(ctx context.Context, pciAddr string, changes mlx.MlxNic) error {
 	_ = ctx
 	log.Log.V(2).Info("nvidia ApplyNicFwChanges", "pciAddr", pciAddr)
 
-	params := map[string]string{}
+	port := nicv1alpha1.NicDevicePortSpec{PCI: pciAddr}
 
 	if changes.EnableSriov {
-		params[nicconsts.SriovEnabledParam] = "True"
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovEnabledParam, "True"); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.SriovEnabledParam, err)
+		}
 	} else if changes.TotalVfs == 0 {
-		params[nicconsts.SriovEnabledParam] = "False"
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovEnabledParam, "False"); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.SriovEnabledParam, err)
+		}
 	}
 
 	if changes.TotalVfs > -1 {
-		params[nicconsts.SriovNumOfVfsParam] = strconv.Itoa(changes.TotalVfs)
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovNumOfVfsParam, strconv.Itoa(changes.TotalVfs)); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.SriovNumOfVfsParam, err)
+		}
 	}
 
 	if changes.LinkTypeP1 != "" {
-		params[nicconsts.LinkTypeP1Param] = changes.LinkTypeP1
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.LinkTypeP1Param, changes.LinkTypeP1); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.LinkTypeP1Param, err)
+		}
 	}
 
 	if changes.LinkTypeP2 != "" {
-		params[nicconsts.LinkTypeP2Param] = changes.LinkTypeP2
+		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.LinkTypeP2Param, changes.LinkTypeP2); err != nil {
+			return fmt.Errorf("set %s: %w", nicconsts.LinkTypeP2Param, err)
+		}
 	}
 
 	if changes.Multiport != -1 {
-		params[lagResourceAllocation] = strconv.Itoa(changes.Multiport)
+		if err := h.nvUtils.SetNvConfigParameter(port, lagResourceAllocation, strconv.Itoa(changes.Multiport)); err != nil {
+			return fmt.Errorf("set %s: %w", lagResourceAllocation, err)
+		}
 	}
 
-	if len(params) == 0 {
-		return nil
-	}
-
-	port := nicv1alpha1.NicDevicePortSpec{PCI: pciAddr}
-	return h.nvUtils.SetNvConfigParametersBatch(port, params, false, false)
+	return nil
 }
 
 // ResetNicFirmware resets all NV config parameters to factory defaults.
