@@ -10,9 +10,8 @@ import (
 )
 
 const (
-	targetSerial = "MT2116X00001"
-	targetPCI    = "0000:3b:00.0"
-	targetIface  = "enp59s0f0np0"
+	targetPCI   = "0000:3b:00.0"
+	targetIface = "enp59s0f0np0"
 )
 
 func main() {
@@ -30,14 +29,19 @@ func main() {
 	}
 	defer helper.StopNicManagement()
 
-	fwData, err := helper.GetNicFwData(ctx, targetPCI, targetIface)
+	current, _, err := helper.GetNicFwData(ctx, targetPCI)
 	if err != nil {
 		log.Fatalf("GetNicFwData: %v", err)
 	}
 
-	fmt.Printf("NIC %s  NUM_OF_VFS  = %d\n", targetPCI, fwData.TotalVfs)
-	fmt.Printf("NIC %s  SRIOV_EN    = %v\n", targetPCI, fwData.EnableSriov)
-	fmt.Printf("NIC %s  LINK_TYPE_P1= %s\n", targetPCI, fwData.LinkTypeP1)
-	fmt.Printf("NIC %s  LINK_TYPE_P2= %s\n", targetPCI, fwData.LinkTypeP2)
-	fmt.Printf("NIC %s  MTU         = %d\n", targetPCI, fwData.MTU)
+	fmt.Printf("NIC %s  NUM_OF_VFS  = %d\n", targetPCI, current.TotalVfs)
+	fmt.Printf("NIC %s  SRIOV_EN    = %v\n", targetPCI, current.EnableSriov)
+	fmt.Printf("NIC %s  LINK_TYPE_P1= %s\n", targetPCI, current.LinkTypeP1)
+	fmt.Printf("NIC %s  LINK_TYPE_P2= %s\n", targetPCI, current.LinkTypeP2)
+
+	mtu, err := helper.GetMTU(targetIface)
+	if err != nil {
+		log.Fatalf("GetMTU: %v", err)
+	}
+	fmt.Printf("NIC %s  MTU         = %d\n", targetPCI, mtu)
 }

@@ -1,6 +1,7 @@
 package nvidia
 
 import (
+	"context"
 	"fmt"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -9,33 +10,37 @@ import (
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/consts"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/helper"
 	plugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins"
-	mellanoxplugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/mellanox"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 	mlx "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vendors/mellanox"
+	nvidiavendor "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vendors/nvidia"
 )
 
 var PluginName = "NvidiaPlugin"
 
+// hostSystemInterface covers the OS-level checks the plugin needs that are
+// unrelated to NIC firmware. helper.HostHelpersInterface satisfies this.
+type hostSystemInterface interface {
+	IsKernelLockdownMode() bool
+	LoadPfsStatus(pciAddress string) (*sriovnetworkv1.Interface, bool, error)
+}
+
 type NvidiaPlugin struct {
 	PluginName          string
-	helpers             helper.HostHelpersInterface
+	system              hostSystemInterface
+	nvidia              nvidiavendor.NvidiaInterface
 	pciAddressesToReset []string
 	attributesToChange  map[string]mlx.MlxNic
 	nicsStatus          map[string]map[string]sriovnetworkv1.InterfaceExt
 	nicsSpec            map[string]sriovnetworkv1.Interface
 }
 
+// NewNvidiaPlugin creates the plugin. helpers is used only for OS-level checks
+// (kernel lockdown, PF status on disk); all NIC operations go through DMS/nvconfig.
 func NewNvidiaPlugin(helpers helper.HostHelpersInterface) (plugin.VendorPlugin, error) {
-	if !vars.UsingSystemdMode {
-		if err := mellanoxplugin.EnsureDDIStaged(); err != nil {
-			log.Log.Error(err, "NvidiaPlugin: failed to stage DDI assets; DDI will be skipped at runtime")
-		}
-	}
-	helpers.SetVFConfigHook(mellanoxplugin.NewMellanoxVFHook(helpers, helpers))
-
 	return &NvidiaPlugin{
 		PluginName:          PluginName,
-		helpers:             helpers,
+		system:              helpers,
+		nvidia:              nvidiavendor.New(),
 		pciAddressesToReset: []string{},
 		attributesToChange:  map[string]mlx.MlxNic{},
 		nicsStatus:          map[string]map[string]sriovnetworkv1.InterfaceExt{},
@@ -47,11 +52,14 @@ func (p *NvidiaPlugin) Name() string {
 	return p.PluginName
 }
 
-// OnNodeStateChange is invoked when SriovNetworkNodeState CR is created or updated.
-// It mirrors the mellanox plugin logic: collecting NIC status/spec, handling
-// TotalVfs, SR-IOV enable, eswitch params, and link type changes.
+// OnNodeStateChange discovers Nvidia NICs in the node state and computes the
+// required firmware changes: TotalVfs, SR-IOV enable, eswitch params, link type.
 func (p *NvidiaPlugin) OnNodeStateChange(new *sriovnetworkv1.SriovNetworkNodeState) (needDrain bool, needReboot bool, err error) {
 	log.Log.Info("nvidia plugin OnNodeStateChange()")
+
+	if stopErr := p.nvidia.StopNicManagement(); stopErr != nil {
+		log.Log.V(2).Info("StopNicManagement (ignored on first call)", "err", stopErr)
+	}
 
 	p.pciAddressesToReset = []string{}
 	p.attributesToChange = map[string]mlx.MlxNic{}
@@ -60,10 +68,12 @@ func (p *NvidiaPlugin) OnNodeStateChange(new *sriovnetworkv1.SriovNetworkNodeSta
 	processedNics := map[string]bool{}
 
 	// Collect all Nvidia NIC statuses grouped by PCI prefix (physical NIC).
+	var nvidiaIfaces []sriovnetworkv1.InterfaceExt
 	for _, iface := range new.Status.Interfaces {
-		if iface.Vendor != mlx.MellanoxVendorID {
+		if iface.Vendor != nvidiavendor.VendorID {
 			continue
 		}
+		nvidiaIfaces = append(nvidiaIfaces, iface)
 		pciPrefix := mlx.GetPciAddressPrefix(iface.PciAddress)
 		if ifaces, ok := p.nicsStatus[pciPrefix]; ok {
 			ifaces[iface.PciAddress] = iface
@@ -81,7 +91,7 @@ func (p *NvidiaPlugin) OnNodeStateChange(new *sriovnetworkv1.SriovNetworkNodeSta
 		p.nicsSpec[iface.PciAddress] = iface
 	}
 
-	if p.helpers.IsKernelLockdownMode() {
+	if p.system.IsKernelLockdownMode() {
 		if len(p.nicsSpec) > 0 {
 			log.Log.Info("Lockdown mode detected, failing on interface update for nvidia devices")
 			return false, false, fmt.Errorf("nvidia device detected when in lockdown mode")
@@ -90,15 +100,22 @@ func (p *NvidiaPlugin) OnNodeStateChange(new *sriovnetworkv1.SriovNetworkNodeSta
 		return
 	}
 
+	if len(nvidiaIfaces) > 0 {
+		if err := p.nvidia.StartNicManagement(nvidiaIfaces); err != nil {
+			return false, false, fmt.Errorf("StartNicManagement: %w", err)
+		}
+	}
+
+	ctx := context.Background()
+
 	for _, ifaceSpec := range p.nicsSpec {
 		pciPrefix := mlx.GetPciAddressPrefix(ifaceSpec.PciAddress)
-		// Skip already-processed NICs (prevents double-processing on dual-port cards).
 		if _, ok := processedNics[pciPrefix]; ok {
 			continue
 		}
 		processedNics[pciPrefix] = true
 
-		fwCurrent, fwNext, err := p.helpers.GetMlxNicFwData(ifaceSpec.PciAddress)
+		fwCurrent, fwNext, err := p.nvidia.GetNicFwData(ctx, ifaceSpec.PciAddress)
 		if err != nil {
 			return false, false, err
 		}
@@ -121,7 +138,7 @@ func (p *NvidiaPlugin) OnNodeStateChange(new *sriovnetworkv1.SriovNetworkNodeSta
 		}
 		needReboot = needReboot || needLinkChange
 
-		// No FW changes allowed when NIC is externally managed.
+		// No FW changes allowed when the NIC is externally managed.
 		if ifaceSpec.ExternallyManaged {
 			if totalVfsNeedReboot || totalVfsChangeWithoutReboot {
 				return false, false, fmt.Errorf(
@@ -173,7 +190,7 @@ func (p *NvidiaPlugin) OnNodeStateChange(new *sriovnetworkv1.SriovNetworkNodeSta
 			continue
 		}
 
-		_, fwNext, err := p.helpers.GetMlxNicFwData(pciAddress)
+		_, fwNext, err := p.nvidia.GetNicFwData(ctx, pciAddress)
 		if err != nil {
 			return false, false, err
 		}
@@ -197,25 +214,36 @@ func (p *NvidiaPlugin) CheckStatusChanges(*sriovnetworkv1.SriovNetworkNodeState)
 	return false, nil
 }
 
-// Apply applies the firmware configuration changes collected in OnNodeStateChange.
+// Apply applies the firmware configuration changes collected in OnNodeStateChange
+// via nvconfig (mlxconfig set) through the nvidia vendor package.
 func (p *NvidiaPlugin) Apply() error {
-	if p.helpers.IsKernelLockdownMode() {
+	if p.system.IsKernelLockdownMode() {
 		log.Log.Info("nvidia plugin Apply() - skipping due to lockdown mode")
 		return nil
 	}
 	log.Log.Info("nvidia plugin Apply()")
-	if err := p.helpers.MlxConfigFW(p.attributesToChange); err != nil {
-		return err
+
+	ctx := context.Background()
+	for pciAddr, changes := range p.attributesToChange {
+		if err := p.nvidia.ApplyNicFwChanges(ctx, pciAddr, changes); err != nil {
+			return fmt.Errorf("ApplyNicFwChanges for %s: %w", pciAddr, err)
+		}
 	}
+
 	if vars.FeatureGate.IsEnabled(consts.MellanoxFirmwareResetFeatureGate) {
-		return p.helpers.MlxResetFW(p.pciAddressesToReset, p.nicsStatus)
+		for _, pciAddr := range p.pciAddressesToReset {
+			if err := p.nvidia.ResetNicFirmware(pciAddr); err != nil {
+				return fmt.Errorf("ResetNicFirmware for %s: %w", pciAddr, err)
+			}
+		}
 	}
+
 	return nil
 }
 
 func (p *NvidiaPlugin) nicHasExternallyManagedPFs(nicPortsMap map[string]sriovnetworkv1.InterfaceExt) (bool, error) {
 	for _, iface := range nicPortsMap {
-		pfStatus, exist, err := p.helpers.LoadPfsStatus(iface.PciAddress)
+		pfStatus, exist, err := p.system.LoadPfsStatus(iface.PciAddress)
 		if err != nil {
 			log.Log.Error(err, "failed to load PF status from disk. "+
 				"This should not happen, to overcome config daemon stuck, "+
@@ -236,7 +264,7 @@ func (p *NvidiaPlugin) nicHasExternallyManagedPFs(nicPortsMap map[string]sriovne
 
 func (p *NvidiaPlugin) nicConfiguredByOperator(nicPortsMap map[string]sriovnetworkv1.InterfaceExt) (bool, error) {
 	for _, iface := range nicPortsMap {
-		_, exist, err := p.helpers.LoadPfsStatus(iface.PciAddress)
+		_, exist, err := p.system.LoadPfsStatus(iface.PciAddress)
 		if err != nil {
 			log.Log.Error(err, "failed to load PF status from disk. "+
 				"This should not happen, to overcome config daemon stuck, "+
