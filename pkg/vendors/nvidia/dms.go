@@ -86,24 +86,46 @@ func (h *nvidiaHelper) StopNicManagement() error {
 	return h.dmsServer.StopDMSServer()
 }
 
-// nvConfigParams are the NV config parameters queried by GetNicFwData.
-var nvConfigParams = []string{
+// requiredNvConfigParams are always supported; queried as a batch.
+var requiredNvConfigParams = []string{
 	nicconsts.SriovNumOfVfsParam,
 	nicconsts.SriovEnabledParam,
+	lagResourceAllocation,
+}
+
+// optionalNvConfigParams may not be supported on all devices (e.g. ConnectX-6 Dx
+// does not support LINK_TYPE_P1/P2); queried individually with errors suppressed.
+var optionalNvConfigParams = []string{
 	nicconsts.LinkTypeP1Param,
 	nicconsts.LinkTypeP2Param,
-	lagResourceAllocation,
 }
 
 // GetNicFwData queries NV config params via mlxconfig and returns current and
 // next-boot state as MlxNic structs compatible with the mlx.Handle* family.
+// Optional params (link type) are queried individually; unsupported ones are skipped.
 func (h *nvidiaHelper) GetNicFwData(ctx context.Context, pciAddr string) (current, nextBoot *mlx.MlxNic, err error) {
 	log.Log.V(2).Info("nvidia GetNicFwData", "pciAddr", pciAddr)
 
 	port := nicv1alpha1.NicDevicePortSpec{PCI: pciAddr}
-	query, err := h.nvUtils.QueryNvConfig(ctx, port, nvConfigParams)
+
+	query, err := h.nvUtils.QueryNvConfig(ctx, port, requiredNvConfigParams)
 	if err != nil {
 		return nil, nil, fmt.Errorf("QueryNvConfig for %s: %w", pciAddr, err)
+	}
+
+	for _, param := range optionalNvConfigParams {
+		q, qErr := h.nvUtils.QueryNvConfig(ctx, port, []string{param})
+		if qErr != nil {
+			log.Log.V(2).Info("nvidia GetNicFwData: skipping unsupported param",
+				"pciAddr", pciAddr, "param", param, "err", qErr)
+			continue
+		}
+		for k, v := range q.CurrentConfig {
+			query.CurrentConfig[k] = v
+		}
+		for k, v := range q.NextBootConfig {
+			query.NextBootConfig[k] = v
+		}
 	}
 
 	current, err = mlxNicFromConfig(query.CurrentConfig)
