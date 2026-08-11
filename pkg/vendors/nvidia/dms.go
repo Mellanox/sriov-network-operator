@@ -66,9 +66,25 @@ func New() NvidiaInterface {
 
 func (h *nvidiaHelper) StartNicManagement(ifaces []sriovnetworkv1.InterfaceExt) error {
 	log.Log.V(2).Info("nvidia StartNicManagement", "deviceCount", len(ifaces))
-	devices := make([]nicv1alpha1.NicDevice, 0, len(ifaces))
+	// dmsd expects one entry per physical NIC (PCI prefix, function stripped).
+	// Group ports by prefix so dual-port NICs produce a single NicDevice.
+	byPrefix := map[string]*nicv1alpha1.NicDevice{}
 	for _, iface := range ifaces {
-		devices = append(devices, nicDeviceFromIface(iface))
+		prefix := mlx.GetPciAddressPrefix(iface.PciAddress)
+		dev, ok := byPrefix[prefix]
+		if !ok {
+			d := nicDeviceFromIface(iface)
+			byPrefix[prefix] = &d
+		} else {
+			dev.Status.Ports = append(dev.Status.Ports, nicv1alpha1.NicDevicePortSpec{
+				PCI:              iface.PciAddress,
+				NetworkInterface: iface.Name,
+			})
+		}
+	}
+	devices := make([]nicv1alpha1.NicDevice, 0, len(byPrefix))
+	for _, dev := range byPrefix {
+		devices = append(devices, *dev)
 	}
 	return h.dmsServer.StartDMSServer(devices)
 }
