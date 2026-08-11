@@ -209,12 +209,20 @@ var (
 	errDDIStage  error
 )
 
-// ensureDDIStaged calls stageDDIAssets exactly once and caches the result.
-func ensureDDIStaged() error {
+// EnsureDDIStaged calls stageDDIAssets exactly once and caches the result.
+func EnsureDDIStaged() error {
 	ddiStageOnce.Do(func() {
 		errDDIStage = stageDDIAssets()
 	})
 	return errDDIStage
+}
+
+// NewMellanoxVFHook creates a MellanoxVFHook ready to be registered with SetVFConfigHook.
+func NewMellanoxVFHook(kernelHelper types.KernelInterface, utilsHelper utils.CmdInterface) *MellanoxVFHook {
+	return &MellanoxVFHook{
+		kernelHelper: kernelHelper,
+		utilsHelper:  utilsHelper,
+	}
 }
 
 // stageDDIAssets copies doca_mgmt_data_direct and every non-system shared

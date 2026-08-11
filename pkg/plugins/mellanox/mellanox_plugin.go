@@ -55,7 +55,7 @@ func NewMellanoxPlugin(helpers helper.HostHelpersInterface) (plugin.VendorPlugin
 	// binary) the hook is still registered but execDDI will soft-skip when the
 	// binary is not found at the staged path.
 	if !vars.UsingSystemdMode {
-		if err := ensureDDIStaged(); err != nil {
+		if err := EnsureDDIStaged(); err != nil {
 			log.Log.Error(err, "MellanoxPlugin: failed to stage DDI assets; DDI will be skipped at runtime")
 		}
 	}
