@@ -4,68 +4,40 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
-	"strings"
 
-	"github.com/Mellanox/nic-configuration-operator/api/v1alpha1"
-	"github.com/Mellanox/nic-configuration-operator/pkg/consts"
-	"github.com/Mellanox/nic-configuration-operator/pkg/dms"
-	"github.com/Mellanox/nic-configuration-operator/pkg/nvconfig"
+	sriovnetworkv1 "github.com/k8snetworkplumbingwg/sriov-network-operator/api/v1"
+	nvidiavendor "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vendors/nvidia"
 )
 
 const (
 	targetSerial = "MT2116X00001"
 	targetPCI    = "0000:3b:00.0"
+	targetIface  = "enp59s0f0np0"
 )
-
-// mlxParams are the four NV config parameters the mellanox plugin reads and
-// may modify: total VF count, SR-IOV enable, and per-port link type.
-var mlxParams = []string{
-	consts.SriovNumOfVfsParam, // NUM_OF_VFS
-	consts.SriovEnabledParam,  // SRIOV_EN
-	consts.LinkTypeP1Param,    // LINK_TYPE_P1
-	consts.LinkTypeP2Param,    // LINK_TYPE_P2
-}
 
 func main() {
 	ctx := context.Background()
 
-	deviceStatus := v1alpha1.NicDeviceStatus{
-		SerialNumber: targetSerial,
-		Ports: []v1alpha1.NicDevicePortSpec{
-			{PCI: targetPCI, NetworkInterface: "enp59s0f0np0"},
-		},
+	iface := sriovnetworkv1.InterfaceExt{
+		PciAddress: targetPCI,
+		Name:       targetIface,
+		Vendor:     nvidiavendor.VendorID,
 	}
 
-	// Start the local DMS server (manages dmsd processes, one per device).
-	dmsMgr := dms.NewDMSManager()
-	if err := dmsMgr.StartDMSInstances([]v1alpha1.NicDeviceStatus{deviceStatus}); err != nil {
-		log.Fatalf("start DMS instances: %v", err)
+	helper := nvidiavendor.New()
+	if err := helper.StartNicManagement([]sriovnetworkv1.InterfaceExt{iface}); err != nil {
+		log.Fatalf("StartNicManagement: %v", err)
 	}
-	defer dmsMgr.StopAllDMSInstances()
+	defer helper.StopNicManagement()
 
-	// Query all NV config in one mlxconfig call (empty additionalParameter = full dump).
-	nvUtils := nvconfig.NewNVConfigUtils()
-	query, err := nvUtils.QueryNvConfig(ctx, targetPCI, "")
+	fwData, err := helper.GetNicFwData(ctx, targetPCI, targetIface)
 	if err != nil {
-		log.Fatalf("QueryNvConfig: %v", err)
+		log.Fatalf("GetNicFwData: %v", err)
 	}
 
-	for _, param := range mlxParams {
-		vals, ok := query.CurrentConfig[param]
-		if !ok || len(vals) == 0 {
-			fmt.Printf("NIC %s  %s = <not found>\n", targetPCI, param)
-			continue
-		}
-		fmt.Printf("NIC %s  %s = %s\n", targetPCI, param, vals[0])
-	}
-
-	// MTU is not an mlxconfig/DMS parameter; read it from sysfs.
-	iface := deviceStatus.Ports[0].NetworkInterface
-	mtuRaw, err := os.ReadFile(filepath.Join("/sys/class/net", iface, "mtu"))
-	if err != nil {
-		log.Fatalf("read MTU for %s: %v", iface, err)
-	}
-	fmt.Printf("NIC %s  MTU = %s\n", targetPCI, strings.TrimSpace(string(mtuRaw)))
+	fmt.Printf("NIC %s  NUM_OF_VFS  = %d\n", targetPCI, fwData.TotalVfs)
+	fmt.Printf("NIC %s  SRIOV_EN    = %v\n", targetPCI, fwData.EnableSriov)
+	fmt.Printf("NIC %s  LINK_TYPE_P1= %s\n", targetPCI, fwData.LinkTypeP1)
+	fmt.Printf("NIC %s  LINK_TYPE_P2= %s\n", targetPCI, fwData.LinkTypeP2)
+	fmt.Printf("NIC %s  MTU         = %d\n", targetPCI, fwData.MTU)
 }
