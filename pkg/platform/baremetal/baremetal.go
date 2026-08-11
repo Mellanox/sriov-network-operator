@@ -13,17 +13,17 @@ import (
 	genericplugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/generic"
 	intelplugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/intel"
 	k8splugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/k8s"
-	mellanoxplugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/mellanox"
+	nvidiaplugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins/nvidia"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
 )
 
 // VendorPluginMap maps PCI vendor IDs to their corresponding plugin constructor functions.
 // Supported vendors:
 //   - "8086": Intel
-//   - "15b3": Mellanox/NVIDIA
+//   - "15b3": NVIDIA (ConnectX / BlueField)
 var VendorPluginMap = map[string]func(helpers helper.HostHelpersInterface) (plugin.VendorPlugin, error){
 	"8086": intelplugin.NewIntelPlugin,
-	"15b3": mellanoxplugin.NewMellanoxPlugin,
+	"15b3": nvidiaplugin.NewNvidiaPlugin,
 }
 
 // Baremetal implements the platform.Interface for bare metal platforms.

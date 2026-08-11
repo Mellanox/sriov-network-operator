@@ -7,6 +7,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	sriovnetworkv1 "github.com/k8snetworkplumbingwg/sriov-network-operator/api/v1"
+	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/helper"
 	plugin "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/plugins"
 	nvidiavendor "github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vendors/nvidia"
 )
@@ -21,7 +22,7 @@ type NvidiaPlugin struct {
 	nicsStatus map[string]sriovnetworkv1.InterfaceExt
 }
 
-func NewNvidiaPlugin() (plugin.VendorPlugin, error) {
+func NewNvidiaPlugin(_ helper.HostHelpersInterface) (plugin.VendorPlugin, error) {
 	return &NvidiaPlugin{
 		PluginName: PluginName,
 		nvidia:     nvidiavendor.New(),
