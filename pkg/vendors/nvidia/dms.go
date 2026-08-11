@@ -28,11 +28,11 @@ const (
 	lagResourceAllocation = "LAG_RESOURCE_ALLOCATION"
 
 	// DMS gNMI paths for the NV config parameters managed by this plugin.
-	dmsPathNumVfs              = "/nvidia/sriov/config/num-vfs"
-	dmsPathSriovEnable         = "/nvidia/sriov/config/enable"
-	dmsPathLinkTypeP1          = "/nvidia/port-config/p1/link-type"
-	dmsPathLinkTypeP2          = "/nvidia/port-config/p2/link-type"
-	dmsPathLagResourceAlloc    = "/nvidia/lag/config/resource-allocation"
+	dmsPathNumVfs           = "/nvidia/sriov/config/num-vfs"
+	dmsPathSriovEnable      = "/nvidia/sriov/config/enable"
+	dmsPathLinkTypeP1       = "/nvidia/port-config/p1/link-type"
+	dmsPathLinkTypeP2       = "/nvidia/port-config/p2/link-type"
+	dmsPathLagResourceAlloc = "/nvidia/lag/config/resource-allocation"
 )
 
 //go:generate ../../../../bin/mockgen -destination mock/mock_nvidia.go -source dms.go
@@ -117,48 +117,62 @@ func (h *nvidiaHelper) GetNicFwData(ctx context.Context, pciAddr string) (curren
 }
 
 // ApplyNicFwChanges applies only the fields that differ from sentinel values
-// (TotalVfs == -1 means skip, empty string means skip) via SetNvConfigParameter.
+// (TotalVfs == -1 means skip, empty string means skip) via DMSClient.SetParameters.
 func (h *nvidiaHelper) ApplyNicFwChanges(ctx context.Context, pciAddr string, changes mlx.MlxNic) error {
-	log.Log.V(2).Info("nvidia ApplyNicFwChanges", "pciAddr", pciAddr)
 	_ = ctx
+	log.Log.V(2).Info("nvidia ApplyNicFwChanges", "pciAddr", pciAddr)
 
-	port := nicv1alpha1.NicDevicePortSpec{PCI: pciAddr}
+	var params []nnictypes.ConfigurationParameter
 
 	if changes.EnableSriov {
-		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovEnabledParam, "True"); err != nil {
-			return fmt.Errorf("set %s: %w", nicconsts.SriovEnabledParam, err)
-		}
+		params = append(params, nnictypes.ConfigurationParameter{
+			Name: nicconsts.SriovEnabledParam, DMSPath: dmsPathSriovEnable,
+			Value: "true", ValueType: "bool",
+		})
 	} else if changes.TotalVfs == 0 {
-		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovEnabledParam, "False"); err != nil {
-			return fmt.Errorf("set %s: %w", nicconsts.SriovEnabledParam, err)
-		}
+		params = append(params, nnictypes.ConfigurationParameter{
+			Name: nicconsts.SriovEnabledParam, DMSPath: dmsPathSriovEnable,
+			Value: "false", ValueType: "bool",
+		})
 	}
 
 	if changes.TotalVfs > -1 {
-		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.SriovNumOfVfsParam, strconv.Itoa(changes.TotalVfs)); err != nil {
-			return fmt.Errorf("set %s: %w", nicconsts.SriovNumOfVfsParam, err)
-		}
+		params = append(params, nnictypes.ConfigurationParameter{
+			Name: nicconsts.SriovNumOfVfsParam, DMSPath: dmsPathNumVfs,
+			Value: strconv.Itoa(changes.TotalVfs), ValueType: "uint",
+		})
 	}
 
 	if changes.LinkTypeP1 != "" {
-		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.LinkTypeP1Param, changes.LinkTypeP1); err != nil {
-			return fmt.Errorf("set %s: %w", nicconsts.LinkTypeP1Param, err)
-		}
+		params = append(params, nnictypes.ConfigurationParameter{
+			Name: nicconsts.LinkTypeP1Param, DMSPath: dmsPathLinkTypeP1,
+			Value: changes.LinkTypeP1, ValueType: "string",
+		})
 	}
 
 	if changes.LinkTypeP2 != "" {
-		if err := h.nvUtils.SetNvConfigParameter(port, nicconsts.LinkTypeP2Param, changes.LinkTypeP2); err != nil {
-			return fmt.Errorf("set %s: %w", nicconsts.LinkTypeP2Param, err)
-		}
+		params = append(params, nnictypes.ConfigurationParameter{
+			Name: nicconsts.LinkTypeP2Param, DMSPath: dmsPathLinkTypeP2,
+			Value: changes.LinkTypeP2, ValueType: "string",
+		})
 	}
 
 	if changes.Multiport != -1 {
-		if err := h.nvUtils.SetNvConfigParameter(port, lagResourceAllocation, strconv.Itoa(changes.Multiport)); err != nil {
-			return fmt.Errorf("set %s: %w", lagResourceAllocation, err)
-		}
+		params = append(params, nnictypes.ConfigurationParameter{
+			Name: lagResourceAllocation, DMSPath: dmsPathLagResourceAlloc,
+			Value: strconv.Itoa(changes.Multiport), ValueType: "uint",
+		})
 	}
 
-	return nil
+	if len(params) == 0 {
+		return nil
+	}
+
+	client, err := h.dmsServer.GetDMSClientByPCIAddress(nicutils.PCIDeviceAddress(pciAddr))
+	if err != nil {
+		return fmt.Errorf("GetDMSClientByPCIAddress for %s: %w", pciAddr, err)
+	}
+	return client.SetParameters(params)
 }
 
 // ResetNicFirmware resets all NV config parameters to factory defaults.
