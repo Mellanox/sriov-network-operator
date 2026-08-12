@@ -17,11 +17,13 @@ import (
 
 var PluginName = "NvidiaPlugin"
 
-// hostSystemInterface covers the OS-level checks the plugin needs that are
-// unrelated to NIC firmware. helper.HostHelpersInterface satisfies this.
+// hostSystemInterface covers the OS-level checks and firmware-reset the plugin
+// needs from the host. helper.HostHelpersInterface satisfies this.
 type hostSystemInterface interface {
 	IsKernelLockdownMode() bool
 	LoadPfsStatus(pciAddress string) (*sriovnetworkv1.Interface, bool, error)
+	// MlxResetFW runs mstfwreset to activate pending NV config changes.
+	MlxResetFW(pciAddresses []string, mellanoxNicsStatus map[string]map[string]sriovnetworkv1.InterfaceExt) error
 }
 
 type NvidiaPlugin struct {
@@ -231,10 +233,8 @@ func (p *NvidiaPlugin) Apply() error {
 	}
 
 	if vars.FeatureGate.IsEnabled(consts.MellanoxFirmwareResetFeatureGate) {
-		for _, pciAddr := range p.pciAddressesToReset {
-			if err := p.nvidia.ResetNicFirmware(pciAddr); err != nil {
-				return fmt.Errorf("ResetNicFirmware for %s: %w", pciAddr, err)
-			}
+		if err := p.system.MlxResetFW(p.pciAddressesToReset, p.nicsStatus); err != nil {
+			return err
 		}
 	}
 

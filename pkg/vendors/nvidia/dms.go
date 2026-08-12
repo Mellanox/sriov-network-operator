@@ -38,8 +38,6 @@ type NvidiaInterface interface {
 	GetNicFwData(ctx context.Context, pciAddr string) (current, nextBoot *mlx.MlxNic, err error)
 	// ApplyNicFwChanges writes the desired NV config changes to the NIC via nvconfig.
 	ApplyNicFwChanges(ctx context.Context, pciAddr string, changes mlx.MlxNic) error
-	// ResetNicFirmware resets the NIC's NV config to defaults via nvconfig.
-	ResetNicFirmware(pciAddr string) error
 	// GetMTU returns the MTU for the given network interface from sysfs.
 	GetMTU(iface string) (int, error)
 }
@@ -153,12 +151,6 @@ func (h *nvidiaHelper) ApplyNicFwChanges(ctx context.Context, pciAddr string, ch
 	}
 
 	return nil
-}
-
-// ResetNicFirmware resets all NV config parameters to factory defaults.
-func (h *nvidiaHelper) ResetNicFirmware(pciAddr string) error {
-	log.Log.V(2).Info("nvidia ResetNicFirmware", "pciAddr", pciAddr)
-	return h.nvUtils.ResetNvConfig(nicv1alpha1.NicDevicePortSpec{PCI: pciAddr})
 }
 
 // GetMTU reads the interface MTU from /sys/class/net/<iface>/mtu.
