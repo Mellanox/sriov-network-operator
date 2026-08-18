@@ -56,6 +56,8 @@ RUN rm -f /usr/bin/mstconfig /usr/bin/mstfwreset
 RUN ln -s $(which mlxconfig) /usr/bin/mstconfig
 RUN ln -s $(which mlxfwreset) /usr/bin/mstfwreset
 
+ENV PATH="/opt/mellanox/doca/services/dms:${PATH}"
+
 LABEL io.k8s.display-name="sriov-network-config-daemon" \
       io.k8s.description="This is a daemon that manage and config sriov network devices in Kubernetes cluster"
 COPY --from=doca-builder /usr/bin/doca_mgmt_data_direct /usr/bin/
