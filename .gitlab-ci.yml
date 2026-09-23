@@ -110,7 +110,7 @@ build-image:
           --branch main \
           https://$GITLAB_USERNAME:$GITLAB_TOKEN@gitlab-master.nvidia.com/pstooling/container-scan-policy-documents.git \
           $(dirname $GOV_READY_POLICY_FILE_PATH)
-        nspect_release_version=$(echo $CI_COMMIT_TAG | grep -Eo '[0-9\.]+' | head -n 1)-fedramp  # determine nspect release version
+        nspect_release_version=$(echo $CI_COMMIT_TAG | grep -Eo '[0-9\.]+' | head -n 1)-gov-ready  # determine nspect release version
         echo "NSPECT_RELEASE_VERSION=$nspect_release_version" | tee -a build.env
       else
         mkdir $(dirname $GOV_READY_POLICY_FILE_PATH)
@@ -201,11 +201,15 @@ update-component-version-in-network-operator:
 
 # Suppress component-generated track-usage jobs — they require a 'generic' runner
 # tag not available in this project and block the .pre stage indefinitely.
-track-template-usage:
+track-template-usage-sidecar:
+  script:
+    - "true"
   rules:
     - when: never
 
 pulse-scan-oss-track-usage:
+  script:
+    - "true"
   rules:
     - when: never
 
