@@ -18,6 +18,7 @@ package v1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -120,6 +121,9 @@ type System struct {
 	// +kubebuilder:validation:Enum=shared;exclusive
 	//RDMA subsystem. Allowed value "shared", "exclusive".
 	RdmaMode string `json:"rdmaMode,omitempty"`
+	// OVS config. It will be provided for ovs-vswitchd service as other_config option
+	// +kubebuilder:default:={hw-offload: "true"}
+	OvsConfig map[string]string `json:"ovsConfig,omitempty"`
 }
 
 // SriovNetworkNodeStateStatus defines the observed state of SriovNetworkNodeState
@@ -157,5 +161,8 @@ type SriovNetworkNodeStateList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&SriovNetworkNodeState{}, &SriovNetworkNodeStateList{})
+	SchemeBuilder.Register(func(s *runtime.Scheme) error {
+		s.AddKnownTypes(GroupVersion, &SriovNetworkNodeState{}, &SriovNetworkNodeStateList{})
+		return nil
+	})
 }
