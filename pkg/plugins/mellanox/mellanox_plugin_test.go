@@ -18,6 +18,7 @@ package mellanox
 
 import (
 	"fmt"
+	"os/exec"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -50,6 +51,7 @@ var _ = Describe("SRIOV", Ordered, func() {
 	BeforeEach(func() {
 		testCtrl = gomock.NewController(GinkgoT())
 		h = mock_helper.NewMockHostHelpersInterface(testCtrl)
+		h.EXPECT().SetVFConfigHook(gomock.Any())
 		m, err = NewMellanoxPlugin(h)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -447,4 +449,31 @@ var _ = Describe("SRIOV", Ordered, func() {
 			mellanoxNicsSpec = map[string]sriovnetworkv1.Interface{}
 		})
 	})
+
+	DescribeTable("ddiResult",
+		func(stdout, stderr string, err error, wantErr bool) {
+			result := ddiResult(stdout, stderr, err, "0000:08:00.2")
+			if wantErr {
+				Expect(result).To(HaveOccurred())
+			} else {
+				Expect(result).NotTo(HaveOccurred())
+			}
+		},
+		Entry("nil error => success", "", "", nil, false),
+		Entry("binary not found (ErrNotFound)", "", "", exec.ErrNotFound, false),
+		Entry("DOCA_ERROR_NOT_SUPPORTED in output", "DOCA_ERROR_NOT_SUPPORTED", "", fmt.Errorf("exit 1"), false),
+		Entry("not supported in output", "not supported", "", fmt.Errorf("exit 1"), false),
+		Entry("Matching device not found", "", "Matching device not found", fmt.Errorf("exit 1"), false),
+		Entry("Requested Resource Not Found", "", "Requested Resource Not Found", fmt.Errorf("exit 1"), false),
+		Entry("VHCA ID as function ID is not supported", "", "VHCA ID as function ID is not supported", fmt.Errorf("exit 1"), false),
+		Entry("firmware rejected - Failed to set data direct", "",
+			"[DOCA][ERR] Failed to set HCA capabilities: command failed with status: status 0x3, syndrome 0xc430\nFailed to set data direct: Input/Output Operation Failed",
+			fmt.Errorf("exit 1"), false),
+		Entry("firmware rejected - Failed to set HCA capabilities", "",
+			"Failed to set HCA capabilities: command failed with status: status 0x3, syndrome 0xc430",
+			fmt.Errorf("exit 1"), false),
+		Entry("missing shared libraries", "", "error while loading shared libraries: libdoca.so: cannot open shared object file", fmt.Errorf("exit 1"), false),
+		Entry("non-zero exit with empty output", "", "", func() error { return exec.Command("false").Run() }(), false),
+		Entry("unknown hard error propagates", "", "some unexpected doca error", fmt.Errorf("exit 1"), true),
+	)
 })

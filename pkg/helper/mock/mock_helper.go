@@ -461,6 +461,21 @@ func (mr *MockHostHelpersInterfaceMockRecorder) GetDevlinkDeviceParam(pciAddr, p
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDevlinkDeviceParam", reflect.TypeOf((*MockHostHelpersInterface)(nil).GetDevlinkDeviceParam), pciAddr, paramName)
 }
 
+// GetDevlinkDeviceParams mocks base method.
+func (m *MockHostHelpersInterface) GetDevlinkDeviceParams(pciAddr string) ([]v1.DevlinkParam, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDevlinkDeviceParams", pciAddr)
+	ret0, _ := ret[0].([]v1.DevlinkParam)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDevlinkDeviceParams indicates an expected call of GetDevlinkDeviceParams.
+func (mr *MockHostHelpersInterfaceMockRecorder) GetDevlinkDeviceParams(pciAddr any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDevlinkDeviceParams", reflect.TypeOf((*MockHostHelpersInterface)(nil).GetDevlinkDeviceParams), pciAddr)
+}
+
 // GetDriverByBusAndDevice mocks base method.
 func (m *MockHostHelpersInterface) GetDriverByBusAndDevice(bus, device string) (string, error) {
 	m.ctrl.T.Helper()
@@ -918,21 +933,6 @@ func (mr *MockHostHelpersInterfaceMockRecorder) ReadConfFile() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadConfFile", reflect.TypeOf((*MockHostHelpersInterface)(nil).ReadConfFile))
 }
 
-// ReadService mocks base method.
-func (m *MockHostHelpersInterface) ReadService(servicePath string) (*types.Service, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReadService", servicePath)
-	ret0, _ := ret[0].(*types.Service)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ReadService indicates an expected call of ReadService.
-func (mr *MockHostHelpersInterfaceMockRecorder) ReadService(servicePath any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadService", reflect.TypeOf((*MockHostHelpersInterface)(nil).ReadService), servicePath)
-}
-
 // ReadOvsServiceInjectionManifestFile mocks base method.
 func (m *MockHostHelpersInterface) ReadOvsServiceInjectionManifestFile(path string, ovsConfig map[string]string) (*types.Service, error) {
 	m.ctrl.T.Helper()
@@ -946,6 +946,21 @@ func (m *MockHostHelpersInterface) ReadOvsServiceInjectionManifestFile(path stri
 func (mr *MockHostHelpersInterfaceMockRecorder) ReadOvsServiceInjectionManifestFile(path, ovsConfig any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadOvsServiceInjectionManifestFile", reflect.TypeOf((*MockHostHelpersInterface)(nil).ReadOvsServiceInjectionManifestFile), path, ovsConfig)
+}
+
+// ReadService mocks base method.
+func (m *MockHostHelpersInterface) ReadService(servicePath string) (*types.Service, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadService", servicePath)
+	ret0, _ := ret[0].(*types.Service)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadService indicates an expected call of ReadService.
+func (mr *MockHostHelpersInterfaceMockRecorder) ReadService(servicePath any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadService", reflect.TypeOf((*MockHostHelpersInterface)(nil).ReadService), servicePath)
 }
 
 // ReadServiceManifestFile mocks base method.
@@ -1007,18 +1022,18 @@ func (mr *MockHostHelpersInterfaceMockRecorder) RebindVfToDefaultDriver(pciAddr 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RebindVfToDefaultDriver", reflect.TypeOf((*MockHostHelpersInterface)(nil).RebindVfToDefaultDriver), pciAddr)
 }
 
-// ReloadService mocks base method.
-func (m *MockHostHelpersInterface) ReloadService() error {
+// ReloadServiceDaemon mocks base method.
+func (m *MockHostHelpersInterface) ReloadServiceDaemon() error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReloadService")
+	ret := m.ctrl.Call(m, "ReloadServiceDaemon")
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// ReloadService indicates an expected call of ReloadService.
-func (mr *MockHostHelpersInterfaceMockRecorder) ReloadService() *gomock.Call {
+// ReloadServiceDaemon indicates an expected call of ReloadServiceDaemon.
+func (mr *MockHostHelpersInterfaceMockRecorder) ReloadServiceDaemon() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReloadService", reflect.TypeOf((*MockHostHelpersInterface)(nil).ReloadService))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReloadServiceDaemon", reflect.TypeOf((*MockHostHelpersInterface)(nil).ReloadServiceDaemon))
 }
 
 // RemoveDisableNMUdevRule mocks base method.
@@ -1105,6 +1120,20 @@ func (mr *MockHostHelpersInterfaceMockRecorder) ResetSriovDevice(ifaceStatus any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetSriovDevice", reflect.TypeOf((*MockHostHelpersInterface)(nil).ResetSriovDevice), ifaceStatus)
 }
 
+// RestartService mocks base method.
+func (m *MockHostHelpersInterface) RestartService(service *types.Service) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestartService", service)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RestartService indicates an expected call of RestartService.
+func (mr *MockHostHelpersInterfaceMockRecorder) RestartService(service any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestartService", reflect.TypeOf((*MockHostHelpersInterface)(nil).RestartService), service)
+}
+
 // RunCommand mocks base method.
 func (m *MockHostHelpersInterface) RunCommand(arg0 string, arg1 ...string) (string, string, error) {
 	m.ctrl.T.Helper()
@@ -1124,6 +1153,27 @@ func (mr *MockHostHelpersInterfaceMockRecorder) RunCommand(arg0 any, arg1 ...any
 	mr.mock.ctrl.T.Helper()
 	varargs := append([]any{arg0}, arg1...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCommand", reflect.TypeOf((*MockHostHelpersInterface)(nil).RunCommand), varargs...)
+}
+
+// RunCommandWithEnv mocks base method.
+func (m *MockHostHelpersInterface) RunCommandWithEnv(env []string, command string, args ...string) (string, string, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{env, command}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunCommandWithEnv", varargs...)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// RunCommandWithEnv indicates an expected call of RunCommandWithEnv.
+func (mr *MockHostHelpersInterfaceMockRecorder) RunCommandWithEnv(env, command any, args ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{env, command}, args...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCommandWithEnv", reflect.TypeOf((*MockHostHelpersInterface)(nil).RunCommandWithEnv), varargs...)
 }
 
 // SaveLastPfAppliedStatus mocks base method.
@@ -1208,6 +1258,18 @@ func (m *MockHostHelpersInterface) SetSriovNumVfs(pciAddr string, numVfs int) er
 func (mr *MockHostHelpersInterfaceMockRecorder) SetSriovNumVfs(pciAddr, numVfs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSriovNumVfs", reflect.TypeOf((*MockHostHelpersInterface)(nil).SetSriovNumVfs), pciAddr, numVfs)
+}
+
+// SetVFConfigHook mocks base method.
+func (m *MockHostHelpersInterface) SetVFConfigHook(hook types.VFConfigHook) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetVFConfigHook", hook)
+}
+
+// SetVFConfigHook indicates an expected call of SetVFConfigHook.
+func (mr *MockHostHelpersInterfaceMockRecorder) SetVFConfigHook(hook any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetVFConfigHook", reflect.TypeOf((*MockHostHelpersInterface)(nil).SetVFConfigHook), hook)
 }
 
 // SetVfAdminMac mocks base method.
@@ -1332,20 +1394,6 @@ func (mr *MockHostHelpersInterfaceMockRecorder) UpdateSystemService(serviceObj a
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateSystemService", reflect.TypeOf((*MockHostHelpersInterface)(nil).UpdateSystemService), serviceObj)
 }
 
-// WriteServiceDropin mocks base method.
-func (m *MockHostHelpersInterface) WriteServiceDropin(service *types.Service) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteServiceDropin", service)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// WriteServiceDropin indicates an expected call of WriteServiceDropin.
-func (mr *MockHostHelpersInterfaceMockRecorder) WriteServiceDropin(service any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteServiceDropin", reflect.TypeOf((*MockHostHelpersInterface)(nil).WriteServiceDropin), service)
-}
-
 // VFIsReady mocks base method.
 func (m *MockHostHelpersInterface) VFIsReady(pciAddr string) (netlink.Link, error) {
 	m.ctrl.T.Helper()
@@ -1402,6 +1450,20 @@ func (m *MockHostHelpersInterface) WriteConfFile(newState *v1.SriovNetworkNodeSt
 func (mr *MockHostHelpersInterfaceMockRecorder) WriteConfFile(newState any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteConfFile", reflect.TypeOf((*MockHostHelpersInterface)(nil).WriteConfFile), newState)
+}
+
+// WriteServiceDropin mocks base method.
+func (m *MockHostHelpersInterface) WriteServiceDropin(service *types.Service) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "WriteServiceDropin", service)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// WriteServiceDropin indicates an expected call of WriteServiceDropin.
+func (mr *MockHostHelpersInterfaceMockRecorder) WriteServiceDropin(service any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteServiceDropin", reflect.TypeOf((*MockHostHelpersInterface)(nil).WriteServiceDropin), service)
 }
 
 // WriteSriovResult mocks base method.

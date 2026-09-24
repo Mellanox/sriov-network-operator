@@ -30,6 +30,7 @@ var _ = Describe("Baremetal", func() {
 		hostHelper = mock_helper.NewMockHostHelpersInterface(mockCtrl)
 		hostHelper.EXPECT().GetCurrentKernelArgs().Return("", nil).AnyTimes()
 		hostHelper.EXPECT().IsKernelArgsSet(gomock.Any(), gomock.Any()).Return(true).AnyTimes()
+		hostHelper.EXPECT().SetVFConfigHook(gomock.Any()).AnyTimes()
 
 		var err error
 		bm, err = New(hostHelper)

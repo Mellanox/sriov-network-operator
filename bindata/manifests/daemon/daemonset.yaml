@@ -90,12 +90,12 @@ spec:
         {{- if .OVSCNIImage }}
         - name: ovs-cni
           image: {{.OVSCNIImage}}
-          command: ["/bin/sh","-c"]
           args:
-            - >
-              cp /ovs /host/opt/cni/bin/ovs &&
-              cp /ovs-mirror-producer /host/opt/cni/bin/ovs-mirror-producer &&
-              cp /ovs-mirror-consumer /host/opt/cni/bin/ovs-mirror-consumer
+            - --cni-bin-dir=/host/opt/cni/bin
+            - --ovs-bin-file=/ovs
+            - --ovs-mirror-producer-bin-file=/ovs-mirror-producer
+            - --ovs-mirror-consumer-bin-file=/ovs-mirror-consumer
+            - --no-sleep
           securityContext:
             privileged: true
           resources:
@@ -139,8 +139,14 @@ spec:
                 cp /usr/share/hwdata/pci.ids /host/usr/share/hwdata/pci.ids
               fi
               mkdir -p /host/var/lib/sriov/
-              cp /usr/bin/sriov-network-config-daemon /host/var/lib/sriov/sriov-network-config-daemon
+              # Copy via a temp file then rename so a running systemd service that still
+              # has the previous inode mmap'd is not truncated in place (SIGBUS).
+              cp /usr/bin/sriov-network-config-daemon /host/var/lib/sriov/sriov-network-config-daemon.new
+              mv -f /host/var/lib/sriov/sriov-network-config-daemon.new /host/var/lib/sriov/sriov-network-config-daemon
               chcon -t bin_t /host/var/lib/sriov/sriov-network-config-daemon || true # Allow systemd to run the file, use pipe true to not failed if the system doesn't have selinux or apparmor enabled
+              cp /bindata/scripts/kargs.sh /host/var/lib/sriov/kargs.sh.new
+              mv -f /host/var/lib/sriov/kargs.sh.new /host/var/lib/sriov/kargs.sh
+              chcon -t bin_t /host/var/lib/sriov/kargs.sh || true # Allow systemd to run the file, use pipe true to not failed if the system doesn't have selinux or apparmor enabled
           securityContext:
             privileged: true
           resources:
@@ -186,6 +192,8 @@ spec:
             value: "{{.ClusterType}}"
           - name: DEV_MODE
             value: "{{.DevMode}}"
+          - name: VF_CONFIG_HOOK_ENABLED
+            value: "{{.VFConfigHookEnabled}}"
           {{- if .UseExternalDrainer }}
           - name: USE_EXTERNAL_DRAINER
             value: "{{.UseExternalDrainer}}"
@@ -203,6 +211,8 @@ spec:
             mountPath: /host
           - name: tmp
             mountPath: /tmp
+          - name: mft-state
+            mountPath: /var/lib/mft
         lifecycle:
           preStop:
             exec:
@@ -219,4 +229,6 @@ spec:
           path: /etc/os-release
           type: File
       - name: tmp
+        emptyDir: {}
+      - name: mft-state
         emptyDir: {}

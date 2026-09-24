@@ -1,13 +1,29 @@
+ARG BASE_IMAGE_DOCA_DEVEL_HOST
 ARG UBUNTU_STIG_BASE_IMAGE
 
-FROM golang:1.26 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
 
 ARG GOPROXY
+ARG TARGETARCH
 ENV GOPROXY=$GOPROXY
 
 WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
 COPY . .
-RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
+RUN GOARCH=${TARGETARCH} make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
+
+# Build doca_mgmt_data_direct and collect its DOCA runtime libraries so they
+# can be dropped into the STIG image which has no DOCA runtime of its own.
+FROM ${BASE_IMAGE_DOCA_DEVEL_HOST:-nvcr.io/nvstaging/doca/doca:devel-3.5.0071-host-dev} AS doca-builder
+
+RUN meson setup /opt/mellanox/doca/samples/doca_mgmt/mgmt_data_direct /tmp/ddi-build && \
+    ninja -C /tmp/ddi-build && \
+    cp /tmp/ddi-build/doca_mgmt_data_direct /usr/bin/ && \
+    rm -rf /tmp/ddi-build
+
+# Collect DOCA runtime shared libraries (preserving symlinks) into a single
+# directory so they can be COPY'd into the STIG final stage.
+RUN mkdir -p /doca-dist && \
+    find /usr -name "libdoca*.so*" -exec cp -a {} /doca-dist/ \;
 
 FROM $UBUNTU_STIG_BASE_IMAGE
 # We have to ensure that pciutils is installed. These packages are needed for mstfwreset to succeed.
@@ -30,6 +46,13 @@ RUN case ${TARGETARCH} in \
 RUN rm -f /usr/bin/mstconfig /usr/bin/mstfwreset
 RUN ln -s $(which mlxconfig) /usr/bin/mstconfig
 RUN ln -s $(which mlxfwreset) /usr/bin/mstfwreset
+
+# Install doca_mgmt_data_direct and its DOCA runtime libraries from the
+# doca-builder stage.  The STIG base image has no DOCA runtime, so the libs
+# are placed under /usr/lib/doca/ and registered via ldconfig.
+COPY --from=doca-builder /usr/bin/doca_mgmt_data_direct /usr/bin/
+COPY --from=doca-builder /doca-dist/ /usr/lib/doca/
+RUN echo "/usr/lib/doca" > /etc/ld.so.conf.d/doca.conf && ldconfig
 
 LABEL io.k8s.display-name="sriov-network-config-daemon" \
       io.k8s.description="This is a daemon that manage and config sriov network devices in Kubernetes cluster"

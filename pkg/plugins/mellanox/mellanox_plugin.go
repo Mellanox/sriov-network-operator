@@ -45,6 +45,25 @@ var mellanoxNicsSpec map[string]sriovnetworkv1.Interface
 func NewMellanoxPlugin(helpers helper.HostHelpersInterface) (plugin.VendorPlugin, error) {
 	mellanoxNicsStatus = map[string]map[string]sriovnetworkv1.InterfaceExt{}
 
+	// In DaemonSet mode the daemon chroots to /host before calling
+	// ConfigSriovInterfaces, making the container's doca_mgmt_data_direct binary
+	// and its DOCA-specific shared libraries inaccessible.  Stage them to the host
+	// filesystem now (before any chroot) so that the VF hook can run the binary
+	// directly from the host filesystem without any process-wide chroot flip.
+	//
+	// Staging is best-effort: if it fails (e.g. non-NVIDIA image without the
+	// binary) the hook is still registered but execDDI will soft-skip when the
+	// binary is not found at the staged path.
+	if !vars.UsingSystemdMode {
+		if err := ensureDDIStaged(); err != nil {
+			log.Log.Error(err, "MellanoxPlugin: failed to stage DDI assets; DDI will be skipped at runtime")
+		}
+	}
+	helpers.SetVFConfigHook(&MellanoxVFHook{
+		kernelHelper: helpers,
+		utilsHelper:  helpers,
+	})
+
 	return &MellanoxPlugin{
 		PluginName: PluginName,
 		helpers:    helpers,
@@ -115,13 +134,16 @@ func (p *MellanoxPlugin) OnNodeStateChange(new *sriovnetworkv1.SriovNetworkNodeS
 
 		isDualPort := mlx.IsDualPort(ifaceSpec.PciAddress, mellanoxNicsStatus)
 		// Attributes to change
-		attrs := &mlx.MlxNic{TotalVfs: -1}
+		attrs := &mlx.MlxNic{TotalVfs: -1, Multiport: -1}
 		var changeWithoutReboot bool
 
 		totalVfs, totalVfsNeedReboot, totalVfsChangeWithoutReboot := mlx.HandleTotalVfs(fwCurrent, fwNext, attrs, ifaceSpec, isDualPort, mellanoxNicsSpec)
 		sriovEnNeedReboot, sriovEnChangeWithoutReboot := mlx.HandleEnableSriov(totalVfs, fwCurrent, fwNext, attrs)
 		needReboot = totalVfsNeedReboot || sriovEnNeedReboot
 		changeWithoutReboot = totalVfsChangeWithoutReboot || sriovEnChangeWithoutReboot
+
+		needESwitchParamsChange := mlx.HandleESwitchParams(pciPrefix, attrs, fwCurrent, mellanoxNicsSpec, mellanoxNicsStatus)
+		needReboot = needReboot || needESwitchParamsChange
 
 		needLinkChange, err := mlx.HandleLinkType(pciPrefix, fwCurrent, attrs, mellanoxNicsSpec, mellanoxNicsStatus)
 		if err != nil {
@@ -193,7 +215,7 @@ func (p *MellanoxPlugin) OnNodeStateChange(new *sriovnetworkv1.SriovNetworkNodeS
 		}
 
 		if fwNext.TotalVfs > 0 || fwNext.EnableSriov {
-			attributesToChange[pciAddress] = mlx.MlxNic{TotalVfs: 0}
+			attributesToChange[pciAddress] = mlx.MlxNic{TotalVfs: 0, Multiport: -1}
 			log.Log.V(2).Info("Changing TotalVfs to 0, doesn't require rebooting", "fwNext.totalVfs", fwNext.TotalVfs)
 		}
 	}

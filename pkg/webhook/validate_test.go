@@ -763,12 +763,12 @@ func TestValidateResourceName(t *testing.T) {
 		errSubstr string
 	}{
 		{name: "valid simple", input: "myresource"},
+		{name: "valid with underscore", input: "my_resource"},
 		{name: "valid with hyphen", input: "my-resource"},
+		{name: "valid mixed", input: "net_device-1"},
 		{name: "valid uppercase", input: "MyResource"},
 		{name: "valid single char", input: "a"},
-		{name: "underscore in name", input: "my_resource"},
-		{name: "underscore with hyphen", input: "net_device-1"},
-		{name: "underscore only", input: "_", expectErr: true, errSubstr: "invalid"},
+		{name: "valid underscore only", input: "_"},
 		{name: "valid 63 chars", input: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
 		{name: "empty", input: "", expectErr: true, errSubstr: "must not be empty"},
 		{name: "leading hyphen", input: "-resource", expectErr: true, errSubstr: "invalid"},

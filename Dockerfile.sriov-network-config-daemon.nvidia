@@ -15,6 +15,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG BASE_IMAGE_DOCA_FULL_RT_HOST
+ARG BASE_IMAGE_DOCA_DEVEL_HOST
 
 FROM golang:1.26 AS builder
 
@@ -25,7 +26,17 @@ WORKDIR /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator
 COPY . .
 RUN make _build-sriov-network-config-daemon BIN_PATH=build/_output/cmd
 
-FROM ${BASE_IMAGE_DOCA_FULL_RT_HOST:-nvcr.io/nvidia/doca/doca:3.2.1-full-rt-host}
+# Build doca_mgmt_data_direct from the DOCA devel image, which already ships
+# samples, headers, and build tools. Avoid apt installs from doca-repo-prod,
+# which is not reachable from public CI runners.
+FROM ${BASE_IMAGE_DOCA_DEVEL_HOST:-nvcr.io/nvstaging/doca/doca:devel-3.5.0071-host-dev} AS doca-builder
+
+RUN meson setup /opt/mellanox/doca/samples/doca_mgmt/mgmt_data_direct /tmp/ddi-build && \
+    ninja -C /tmp/ddi-build && \
+    cp /tmp/ddi-build/doca_mgmt_data_direct /usr/bin/ && \
+    rm -rf /tmp/ddi-build
+
+FROM ${BASE_IMAGE_DOCA_FULL_RT_HOST:-nvcr.io/nvstaging/doca/doca:full-rt-3.5.0071-host-dev}
 
 # Drop NVIDIA-internal apt sources baked into staging DOCA base images so the
 # build works from public CI (GitHub Actions). mstflint then resolves from Ubuntu.
@@ -47,6 +58,7 @@ RUN ln -s $(which mlxfwreset) /usr/bin/mstfwreset
 
 LABEL io.k8s.display-name="sriov-network-config-daemon" \
       io.k8s.description="This is a daemon that manage and config sriov network devices in Kubernetes cluster"
+COPY --from=doca-builder /usr/bin/doca_mgmt_data_direct /usr/bin/
 COPY --from=builder /go/src/github.com/k8snetworkplumbingwg/sriov-network-operator/build/_output/cmd/sriov-network-config-daemon /usr/bin/
 COPY bindata /bindata
 # copy project sources into the container

@@ -123,6 +123,34 @@ func (s *service) EnableService(service *types.Service) error {
 	return err
 }
 
+// ReloadServiceDaemon reloads a systemd unit file on the host
+func (s *service) ReloadServiceDaemon() error {
+	// Change root dir
+	exit, err := s.utilsHelper.Chroot(consts.Chroot)
+	if err != nil {
+		return err
+	}
+	defer exit()
+
+	// Restart the service
+	_, _, err = s.utilsHelper.RunCommand("systemctl", "daemon-reload")
+	return err
+}
+
+// RestartService restarts systemd service with systemctl restart
+func (s *service) RestartService(service *types.Service) error {
+	// Change root dir
+	exit, err := s.utilsHelper.Chroot(consts.Chroot)
+	if err != nil {
+		return err
+	}
+	defer exit()
+
+	// Restart the service
+	_, _, err = s.utilsHelper.RunCommand("systemctl", "restart", service.Name)
+	return err
+}
+
 // CompareServices returns true if serviceA needs update(doesn't contain all fields from service B)
 func (s *service) CompareServices(serviceA, serviceB *types.Service) (bool, error) {
 	optsA, err := unit.DeserializeOptions(strings.NewReader(serviceA.Content))
