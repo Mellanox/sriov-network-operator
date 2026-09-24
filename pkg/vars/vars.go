@@ -105,6 +105,11 @@ var (
 	// UseExternalDrainer controls if SRIOV operator will use an external drainer
 	// for draining nodes or its internal drain controller (default)
 	UseExternalDrainer bool
+
+	// VFConfigHookEnabled controls whether the VFConfigHook is invoked during VF
+	// configuration. Set VF_CONFIG_HOOK_ENABLED=false on the operator deployment
+	// to disable. Defaults to true when unset.
+	VFConfigHookEnabled bool
 )
 
 func init() {
@@ -129,6 +134,7 @@ func init() {
 	FeatureGate = featuregate.New()
 
 	UseExternalDrainer = os.Getenv("USE_EXTERNAL_DRAINER") == "true"
+	VFConfigHookEnabled = os.Getenv("VF_CONFIG_HOOK_ENABLED") != "false"
 }
 
 func GetPlatformType(providerID string) consts.PlatformTypes {

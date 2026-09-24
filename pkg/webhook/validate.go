@@ -168,10 +168,9 @@ func validateSriovNetworkNodePolicy(cr *sriovnetworkv1.SriovNetworkNodePolicy, o
 // Kubernetes DNS label limit (https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names).
 const resourceNameMaxLen = 63
 
-// resourceNameRegexp allows alphanumeric characters in any position, plus
-// hyphens and underscores in non-boundary positions (no leading/trailing hyphens or underscores).
-// Underscores are included for backward-compatibility with existing resource names.
-var resourceNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9_-]*[a-zA-Z0-9])?$`)
+// resourceNameRegexp allows alphanumeric characters and underscores in any
+// position, plus hyphens in non-boundary positions (no leading/trailing hyphens).
+var resourceNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9_]([a-zA-Z0-9_-]*[a-zA-Z0-9_])?$`)
 
 func validateResourceName(name string) error {
 	if name == "" {
@@ -181,9 +180,9 @@ func validateResourceName(name string) error {
 		return fmt.Errorf("resource name %q must be no more than %d characters", name, resourceNameMaxLen)
 	}
 	if !resourceNameRegexp.MatchString(name) {
-		return fmt.Errorf("resource name %q is invalid: must consist of alphanumeric characters or hyphens, "+
-			"and must start and end with an alphanumeric character "+
-			"(e.g. 'myresource', 'net-device-1'), see https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names", name)
+		return fmt.Errorf("resource name %q is invalid: must consist of alphanumeric characters, underscores or hyphens, "+
+			"and must start and end with an alphanumeric character or underscore "+
+			"(e.g. 'my_resource', 'net-device-1'), see https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names", name)
 	}
 	return nil
 }

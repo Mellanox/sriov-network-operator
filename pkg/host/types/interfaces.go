@@ -96,6 +96,8 @@ type NetworkInterface interface {
 	// GetDevlinkDeviceParam returns devlink parameter for the device as a string, if the parameter has multiple values
 	// then the function will return only first one from the list.
 	GetDevlinkDeviceParam(pciAddr, paramName string) (string, error)
+	// GetDevlinkDeviceParams returns all configured devlink parameters
+	GetDevlinkDeviceParams(pciAddr string) ([]sriovnetworkv1.DevlinkParam, error)
 	// SetDevlinkDeviceParam set devlink parameter for the device, accepts paramName and value
 	// as a string. Automatically set CMODE for the parameter and converts the value to the right
 	// type before submitting it.
@@ -121,6 +123,10 @@ type ServiceInterface interface {
 	ReadService(servicePath string) (*Service, error)
 	// EnableService enables a systemd service on the host
 	EnableService(service *Service) error
+	// ReloadServiceDaemon reloads the systemd daemon on the host to pick up changes in services
+	ReloadServiceDaemon() error
+	// RestartService restarts a systemd service on the host
+	RestartService(service *Service) error
 	// ReadServiceManifestFile reads the systemd manifest for a specific service
 	ReadServiceManifestFile(path string) (*Service, error)
 	// ReadOvsServiceInjectionManifestFile reads the injection manifest file for the systemd service
@@ -166,6 +172,17 @@ type SriovInterface interface {
 	// ConfigSriovDevicesVirtual configure virtual functions for virtual environments with the desired configuration
 	ConfigSriovDevicesVirtual(storeManager store.ManagerInterface, interfaces []sriovnetworkv1.Interface,
 		ifaceStatuses []sriovnetworkv1.InterfaceExt) error
+	// SetVFConfigHook registers an optional per-VF hook called after a VF is unbound, before rebinding.
+	// Vendor plugins use this to inject vendor-specific per-VF logic; the default (nil) is a no-op.
+	SetVFConfigHook(hook VFConfigHook)
+}
+
+// VFConfigHook is an optional per-VF hook called after a VF is unbound, before rebinding.
+// Implementations are registered by vendor plugins via SetVFConfigHook; nil means no-op.
+type VFConfigHook interface {
+	// OnVFUnbound is called after a VF has been unbound from its driver.
+	// iface is the PF interface spec, vfPciAddr is the VF PCI address, group is the matched VfGroup.
+	OnVFUnbound(iface *sriovnetworkv1.Interface, vfPciAddr string, group *sriovnetworkv1.VfGroup) error
 }
 
 type UdevInterface interface {
@@ -206,7 +223,9 @@ type VdpaInterface interface {
 type BridgeInterface interface {
 	// DiscoverBridges returns information about managed bridges on the host
 	DiscoverBridges() (sriovnetworkv1.Bridges, error)
-	// ConfigureBridge configure managed bridges for the host
+	// ConfigureBridges configure managed bridges for the host.
+	// When groupingPolicy is "all", the bridges spec will contain a single bridge
+	// with multiple uplinks (created by the controller in ApplyBridgeConfig).
 	ConfigureBridges(bridgesSpec sriovnetworkv1.Bridges, bridgesStatus sriovnetworkv1.Bridges) error
 	// DetachUplinkAndVFRepresentorsFromManagedBridge detaches a PF uplink and all of
 	// its VF representors from a managed bridge.

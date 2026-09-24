@@ -89,3 +89,24 @@ func (mr *MockCmdInterfaceMockRecorder) RunCommand(arg0 any, arg1 ...any) *gomoc
 	varargs := append([]any{arg0}, arg1...)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCommand", reflect.TypeOf((*MockCmdInterface)(nil).RunCommand), varargs...)
 }
+
+// RunCommandWithEnv mocks base method.
+func (m *MockCmdInterface) RunCommandWithEnv(arg0 []string, arg1 string, arg2 ...string) (string, string, error) {
+	m.ctrl.T.Helper()
+	varargs := []any{arg0, arg1}
+	for _, a := range arg2 {
+		varargs = append(varargs, a)
+	}
+	ret := m.ctrl.Call(m, "RunCommandWithEnv", varargs...)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// RunCommandWithEnv indicates an expected call of RunCommandWithEnv.
+func (mr *MockCmdInterfaceMockRecorder) RunCommandWithEnv(arg0 any, arg1 any, arg2 ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{arg0, arg1}, arg2...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RunCommandWithEnv", reflect.TypeOf((*MockCmdInterface)(nil).RunCommandWithEnv), varargs...)
+}
