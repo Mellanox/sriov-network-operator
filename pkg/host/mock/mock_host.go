@@ -913,6 +913,20 @@ func (mr *MockHostManagerInterfaceMockRecorder) RemovePersistPFNameUdevRule(pfPc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemovePersistPFNameUdevRule", reflect.TypeOf((*MockHostManagerInterface)(nil).RemovePersistPFNameUdevRule), pfPciAddress)
 }
 
+// RemoveServiceDropin mocks base method.
+func (m *MockHostManagerInterface) RemoveServiceDropin(service *types.Service) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveServiceDropin", service)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveServiceDropin indicates an expected call of RemoveServiceDropin.
+func (mr *MockHostManagerInterfaceMockRecorder) RemoveServiceDropin(service any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveServiceDropin", reflect.TypeOf((*MockHostManagerInterface)(nil).RemoveServiceDropin), service)
+}
+
 // RemoveSriovResult mocks base method.
 func (m *MockHostManagerInterface) RemoveSriovResult() error {
 	m.ctrl.T.Helper()

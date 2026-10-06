@@ -113,8 +113,16 @@ var _ = Describe("K8s plugin", func() {
 		testCtrl.Finish()
 	})
 
+	// expectNoOvsOnHost covers the OVS lookup that now happens on every node state
+	// change, so that a drop-in left behind by a previous switchdev configuration
+	// can be cleaned up.
+	expectNoOvsOnHost := func() {
+		hostHelper.EXPECT().IsServiceExist("/usr/lib/systemd/system/ovs-vswitchd.service").Return(false, nil)
+	}
+
 	It("no switchdev, no systemd", func() {
 		setIsSystemdMode(false)
+		expectNoOvsOnHost()
 		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(&sriovnetworkv1.SriovNetworkNodeState{})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(needReboot).To(BeFalse())
@@ -124,6 +132,7 @@ var _ = Describe("K8s plugin", func() {
 
 	It("systemd, created", func() {
 		setIsSystemdMode(true)
+		expectNoOvsOnHost()
 
 		hostHelper.EXPECT().IsServiceEnabled("/etc/systemd/system/sriov-config.service").Return(false, nil)
 		hostHelper.EXPECT().IsServiceEnabled("/etc/systemd/system/sriov-config-post-network.service").Return(false, nil)
@@ -138,6 +147,7 @@ var _ = Describe("K8s plugin", func() {
 	})
 	It("systemd, already configured", func() {
 		setIsSystemdMode(true)
+		expectNoOvsOnHost()
 
 		hostHelper.EXPECT().IsServiceEnabled("/etc/systemd/system/sriov-config.service").Return(true, nil)
 		hostHelper.EXPECT().ReadService("/etc/systemd/system/sriov-config.service").Return(
@@ -162,6 +172,7 @@ var _ = Describe("K8s plugin", func() {
 	})
 	It("systemd, update required", func() {
 		setIsSystemdMode(true)
+		expectNoOvsOnHost()
 
 		hostHelper.EXPECT().IsServiceEnabled("/etc/systemd/system/sriov-config.service").Return(true, nil)
 		hostHelper.EXPECT().ReadService("/etc/systemd/system/sriov-config.service").Return(
@@ -205,8 +216,7 @@ var _ = Describe("K8s plugin", func() {
 			newServiceNameMatcher("ovs-vswitchd.service"),
 		).Return(true, nil)
 		hostHelper.EXPECT().WriteServiceDropin(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
-		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(&sriovnetworkv1.SriovNetworkNodeState{
-			Spec: sriovnetworkv1.SriovNetworkNodeStateSpec{Interfaces: []sriovnetworkv1.Interface{{EswitchMode: "switchdev"}}}})
+		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(switchdevStateWithOvsConfig())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(needReboot).To(BeTrue())
 		Expect(needDrain).To(BeTrue())
@@ -221,8 +231,7 @@ var _ = Describe("K8s plugin", func() {
 			&hostTypes.Service{Name: "ovs-vswitchd.service"},
 			newServiceNameMatcher("ovs-vswitchd.service"),
 		).Return(false, nil)
-		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(&sriovnetworkv1.SriovNetworkNodeState{
-			Spec: sriovnetworkv1.SriovNetworkNodeStateSpec{Interfaces: []sriovnetworkv1.Interface{{EswitchMode: "switchdev"}}}})
+		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(switchdevStateWithOvsConfig())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(needReboot).To(BeFalse())
 		Expect(needDrain).To(BeFalse())
@@ -237,12 +246,61 @@ var _ = Describe("K8s plugin", func() {
 			&hostTypes.Service{Name: "ovs-vswitchd.service"},
 			newServiceNameMatcher("ovs-vswitchd.service"),
 		).Return(true, nil)
-		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(&sriovnetworkv1.SriovNetworkNodeState{
-			Spec: sriovnetworkv1.SriovNetworkNodeStateSpec{Interfaces: []sriovnetworkv1.Interface{{EswitchMode: "switchdev"}}}})
+		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(switchdevStateWithOvsConfig())
 		Expect(err).ToNot(HaveOccurred())
 		Expect(needReboot).To(BeTrue())
 		Expect(needDrain).To(BeTrue())
 		hostHelper.EXPECT().WriteServiceDropin(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
 		Expect(k8sPlugin.Apply()).NotTo(HaveOccurred())
 	})
+	It("no ovs config, no drop-in on the host", func() {
+		setIsSystemdMode(false)
+		hostHelper.EXPECT().IsServiceExist("/usr/lib/systemd/system/ovs-vswitchd.service").Return(true, nil)
+		hostHelper.EXPECT().IsServiceExist("/usr/lib/systemd/system/ovs-vswitchd.service.d/10-hw-offload.conf").Return(false, nil)
+		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(&sriovnetworkv1.SriovNetworkNodeState{
+			Spec: sriovnetworkv1.SriovNetworkNodeStateSpec{Interfaces: []sriovnetworkv1.Interface{{EswitchMode: "switchdev"}}}})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needReboot).To(BeFalse())
+		Expect(needDrain).To(BeFalse())
+		Expect(k8sPlugin.Apply()).NotTo(HaveOccurred())
+	})
+	It("no ovs config, stale drop-in is removed without reboot", func() {
+		setIsSystemdMode(false)
+		hostHelper.EXPECT().IsServiceExist("/usr/lib/systemd/system/ovs-vswitchd.service").Return(true, nil)
+		hostHelper.EXPECT().IsServiceExist("/usr/lib/systemd/system/ovs-vswitchd.service.d/10-hw-offload.conf").Return(true, nil)
+		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(&sriovnetworkv1.SriovNetworkNodeState{
+			Spec: sriovnetworkv1.SriovNetworkNodeStateSpec{Interfaces: []sriovnetworkv1.Interface{{EswitchMode: "switchdev"}}}})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needReboot).To(BeFalse())
+		Expect(needDrain).To(BeFalse())
+		hostHelper.EXPECT().RemoveServiceDropin(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
+		hostHelper.EXPECT().ReloadServiceDaemon().Return(nil)
+		Expect(k8sPlugin.Apply()).NotTo(HaveOccurred())
+	})
+	It("switchdev no longer requested, stale drop-in is removed", func() {
+		setIsSystemdMode(false)
+		hostHelper.EXPECT().IsServiceExist("/usr/lib/systemd/system/ovs-vswitchd.service").Return(true, nil)
+		hostHelper.EXPECT().IsServiceExist("/usr/lib/systemd/system/ovs-vswitchd.service.d/10-hw-offload.conf").Return(true, nil)
+		// The OvsConfig in the spec is irrelevant once switchdev is gone.
+		needDrain, needReboot, err := k8sPlugin.OnNodeStateChange(&sriovnetworkv1.SriovNetworkNodeState{
+			Spec: sriovnetworkv1.SriovNetworkNodeStateSpec{
+				Interfaces: []sriovnetworkv1.Interface{{EswitchMode: "legacy"}},
+				System:     sriovnetworkv1.System{OvsConfig: map[string]string{"hw-offload": "true"}},
+			}})
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needReboot).To(BeFalse())
+		Expect(needDrain).To(BeFalse())
+		hostHelper.EXPECT().RemoveServiceDropin(newServiceNameMatcher("ovs-vswitchd.service")).Return(nil)
+		hostHelper.EXPECT().ReloadServiceDaemon().Return(nil)
+		Expect(k8sPlugin.Apply()).NotTo(HaveOccurred())
+	})
 })
+
+func switchdevStateWithOvsConfig() *sriovnetworkv1.SriovNetworkNodeState {
+	return &sriovnetworkv1.SriovNetworkNodeState{
+		Spec: sriovnetworkv1.SriovNetworkNodeStateSpec{
+			Interfaces: []sriovnetworkv1.Interface{{EswitchMode: "switchdev"}},
+			System:     sriovnetworkv1.System{OvsConfig: map[string]string{"hw-offload": "true"}},
+		},
+	}
+}

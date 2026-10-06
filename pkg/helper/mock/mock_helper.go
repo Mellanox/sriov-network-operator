@@ -1078,6 +1078,20 @@ func (mr *MockHostHelpersInterfaceMockRecorder) RemovePfAppliedStatus(pciAddress
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemovePfAppliedStatus", reflect.TypeOf((*MockHostHelpersInterface)(nil).RemovePfAppliedStatus), pciAddress)
 }
 
+// RemoveServiceDropin mocks base method.
+func (m *MockHostHelpersInterface) RemoveServiceDropin(service *types.Service) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveServiceDropin", service)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveServiceDropin indicates an expected call of RemoveServiceDropin.
+func (mr *MockHostHelpersInterfaceMockRecorder) RemoveServiceDropin(service any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveServiceDropin", reflect.TypeOf((*MockHostHelpersInterface)(nil).RemoveServiceDropin), service)
+}
+
 // RemoveSriovResult mocks base method.
 func (m *MockHostHelpersInterface) RemoveSriovResult() error {
 	m.ctrl.T.Helper()
