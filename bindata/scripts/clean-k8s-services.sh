@@ -25,16 +25,12 @@ chroot_path="/host"
 
 
 ovs_service=$chroot_path/usr/lib/systemd/system/ovs-vswitchd.service
-ovs_dropin_dir=$chroot_path/usr/lib/systemd/system/ovs-vswitchd.service.d
-ovs_dropin=$ovs_dropin_dir/10-hw-offload.conf
 
 needs_reload=""
 
-if [ -f $ovs_dropin ]; then
-  rm -f $ovs_dropin
-  rmdir $ovs_dropin_dir >/dev/null 2>&1 || true
-  needs_reload="yes"
-fi
+# Preserve the OVS drop-in across pod termination, including temporary node
+# exclusion and rolling updates. The k8s plugin removes it during reconciliation
+# when OVS configuration or switchdev is no longer requested.
 
 # Older versions injected hw-offload directly into the service file instead of a drop-in
 if [ -f $ovs_service ]; then
