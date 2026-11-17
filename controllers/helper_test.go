@@ -19,11 +19,13 @@ package controllers
 import (
 	"context"
 	"os"
+	"path/filepath"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	appsv1 "k8s.io/api/apps/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -40,6 +42,7 @@ import (
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/consts"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/render"
 	"github.com/k8snetworkplumbingwg/sriov-network-operator/pkg/vars"
+	"github.com/k8snetworkplumbingwg/sriov-network-operator/test/util"
 )
 
 // --- Phase 4: DRA helper unit tests (GetNodeSelectorForDRADriver, syncDRADriverObjs, cleanupDRADriverObjs) ---
@@ -191,4 +194,64 @@ var _ = Describe("Helper DRA", func() {
 			Expect(ds.Spec.Template.Spec.NodeSelector).To(HaveKeyWithValue("node-role.kubernetes.io/worker", ""))
 		})
 	})
+	DescribeTable("DRA driver RBAC authorizes scoped ResourceClaim status updates", func(seedLegacy bool) {
+		ctx := context.Background()
+		role := &rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: draDriverClusterRBACName}}
+		binding := &rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: draDriverClusterRBACName}}
+		DeferCleanup(func() {
+			Expect(k8sclient.IgnoreNotFound(k8sClient.Delete(ctx, binding))).To(Succeed())
+			Expect(k8sclient.IgnoreNotFound(k8sClient.Delete(ctx, role))).To(Succeed())
+		})
+		if seedLegacy {
+			Expect(k8sClient.Create(ctx, role)).To(Succeed())
+		}
+
+		data := render.MakeRenderData()
+		data.Data["Namespace"] = testNamespace
+		objs, err := render.RenderFileTemplate(filepath.Join(consts.DRADriverPath, "003-clusterrole.yaml"), &data)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(objs).To(HaveLen(2))
+		dc := &sriovnetworkv1.SriovOperatorConfig{
+			ObjectMeta: metav1.ObjectMeta{Name: consts.DefaultConfigName, Namespace: testNamespace},
+		}
+		for _, obj := range objs {
+			Expect(syncDsObject(ctx, k8sClient, k8sClient.Scheme(), dc, obj, apply.ApplyObject)).To(Succeed())
+		}
+
+		checks := []struct {
+			verb        string
+			subresource string
+			name        string
+			allowed     bool
+		}{
+			{"associated-node:update", "driver", "sriovnetwork.k8snetworkplumbingwg.io", true},
+			{"associated-node:update", "driver", "other-driver.example.com", false},
+			{"associated-node:patch", "driver", "sriovnetwork.k8snetworkplumbingwg.io", false},
+			{"arbitrary-node:update", "driver", "sriovnetwork.k8snetworkplumbingwg.io", false},
+			{"update", "status", "claim", true},
+		}
+		Eventually(func(g Gomega) {
+			for _, check := range checks {
+				review := &authorizationv1.SubjectAccessReview{
+					Spec: authorizationv1.SubjectAccessReviewSpec{
+						User: "system:serviceaccount:" + testNamespace + ":" + draDriverServiceAccountName,
+						ResourceAttributes: &authorizationv1.ResourceAttributes{
+							Namespace:   testNamespace,
+							Group:       "resource.k8s.io",
+							Resource:    "resourceclaims",
+							Subresource: check.subresource,
+							Verb:        check.verb,
+							Name:        check.name,
+						},
+					},
+				}
+				g.Expect(k8sClient.Create(ctx, review)).To(Succeed())
+				g.Expect(review.Status.Allowed).To(Equal(check.allowed),
+					"%s on resourceclaims/%s named %s", check.verb, check.subresource, check.name)
+			}
+		}, util.APITimeout, util.RetryInterval).Should(Succeed())
+	},
+		Entry("when creating the role", false),
+		Entry("when updating an existing role", true),
+	)
 })
