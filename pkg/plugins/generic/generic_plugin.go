@@ -343,16 +343,18 @@ func (p *GenericPlugin) shouldUpdateKernelArgs() (bool, error) {
 		return false, err
 	}
 
-	for karg, kargState := range p.DesiredKernelArgs {
-		if kargState && !p.helpers.IsKernelArgsSet(kargs, karg) {
-			return true, nil
-		}
-
-		if !kargState && p.helpers.IsKernelArgsSet(kargs, karg) {
+	for karg := range p.DesiredKernelArgs {
+		if p.shouldUpdateKernelArg(kargs, karg) {
 			return true, nil
 		}
 	}
 	return false, nil
+}
+
+// shouldUpdateKernelArg returns true if the desired state of a particular kernel arg
+// differs from its state in the given running kernel args.
+func (p *GenericPlugin) shouldUpdateKernelArg(kargs, karg string) bool {
+	return p.DesiredKernelArgs[karg] != p.helpers.IsKernelArgsSet(kargs, karg)
 }
 
 // syncDesiredKernelArgs should be called to set all the kernel arguments. Returns bool if node update is needed.
@@ -364,15 +366,15 @@ func (p *GenericPlugin) syncDesiredKernelArgs() (bool, error) {
 
 	needReboot := false
 	for karg, kargState := range p.DesiredKernelArgs {
+		if !p.shouldUpdateKernelArg(kargs, karg) {
+			continue
+		}
+
 		if kargState {
 			err = editKernelArg(p.helpers, "add", karg)
 			if err != nil {
 				log.Log.Error(err, "generic-plugin syncDesiredKernelArgs(): fail to set kernel arg", "karg", karg)
 				return false, err
-			}
-
-			if !p.helpers.IsKernelArgsSet(kargs, karg) {
-				needReboot = true
 			}
 		} else {
 			err = editKernelArg(p.helpers, "remove", karg)
@@ -380,11 +382,8 @@ func (p *GenericPlugin) syncDesiredKernelArgs() (bool, error) {
 				log.Log.Error(err, "generic-plugin syncDesiredKernelArgs(): fail to remove kernel arg", "karg", karg)
 				return false, err
 			}
-
-			if p.helpers.IsKernelArgsSet(kargs, karg) {
-				needReboot = true
-			}
 		}
+		needReboot = true
 	}
 	return needReboot, nil
 }
