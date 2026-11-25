@@ -17,6 +17,7 @@
 package generic
 
 import (
+	"errors"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -1380,5 +1381,64 @@ var _ = Describe("Generic plugin", func() {
 		updated, err := genericPlugin.CheckStatusChanges(networkNodeState)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(updated).To(BeTrue())
+	})
+})
+
+var _ = Describe("Generic plugin syncDesiredKernelArgs", func() {
+	const runningKargs = "intel_iommu=on rdma_shared"
+
+	var (
+		ctrl       *gomock.Controller
+		hostHelper *mock_helper.MockHostHelpersInterface
+		p          *GenericPlugin
+	)
+
+	BeforeEach(func() {
+		ctrl = gomock.NewController(GinkgoT())
+		hostHelper = mock_helper.NewMockHostHelpersInterface(ctrl)
+		hostHelper.EXPECT().GetCurrentKernelArgs().Return(runningKargs, nil).AnyTimes()
+		hostHelper.EXPECT().IsKernelArgsSet(runningKargs, gomock.Any()).
+			DoAndReturn(func(_, karg string) bool {
+				return karg == consts.KernelArgIntelIommu || karg == consts.KernelArgRdmaShared
+			}).AnyTimes()
+
+		p = &GenericPlugin{helpers: hostHelper, DesiredKernelArgs: KargStateMapType{}}
+	})
+
+	It("should not edit or reboot when all desired args already match", func() {
+		p.DesiredKernelArgs[consts.KernelArgIntelIommu] = true
+		p.DesiredKernelArgs[consts.KernelArgRdmaShared] = true
+		p.DesiredKernelArgs[consts.KernelArgIommuPt] = false
+		p.DesiredKernelArgs[consts.KernelArgRdmaExclusive] = false
+		hostHelper.EXPECT().RunCommand(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		needReboot, err := p.syncDesiredKernelArgs()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needReboot).To(BeFalse())
+	})
+
+	It("should edit only the mismatching args and require reboot", func() {
+		p.DesiredKernelArgs[consts.KernelArgIntelIommu] = true     // matches, skipped
+		p.DesiredKernelArgs[consts.KernelArgRdmaExclusive] = false // matches, skipped
+		p.DesiredKernelArgs[consts.KernelArgIommuPt] = true        // missing, add
+		p.DesiredKernelArgs[consts.KernelArgRdmaShared] = false    // present, remove
+		hostHelper.EXPECT().RunCommand(gomock.Any(), gomock.Any(), "add", consts.KernelArgIommuPt).
+			Return("", "", nil).Times(1)
+		hostHelper.EXPECT().RunCommand(gomock.Any(), gomock.Any(), "remove", consts.KernelArgRdmaShared).
+			Return("", "", nil).Times(1)
+
+		needReboot, err := p.syncDesiredKernelArgs()
+		Expect(err).ToNot(HaveOccurred())
+		Expect(needReboot).To(BeTrue())
+	})
+
+	It("should return the error when editing a mismatching arg fails", func() {
+		p.DesiredKernelArgs[consts.KernelArgIommuPt] = true
+		hostHelper.EXPECT().RunCommand(gomock.Any(), gomock.Any(), "add", consts.KernelArgIommuPt).
+			Return("", "", errors.New("boom")).Times(1)
+
+		needReboot, err := p.syncDesiredKernelArgs()
+		Expect(err).To(HaveOccurred())
+		Expect(needReboot).To(BeFalse())
 	})
 })
